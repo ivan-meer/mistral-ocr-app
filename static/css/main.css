@@ -1,0 +1,204 @@
+body {
+    font-family: 'Inter', Arial, sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh; /* Ensure full viewport height */
+}
+
+.container-fluid {
+    max-width: 1200px;
+    padding: 2rem;
+}
+
+.upload-container {
+    background-color: #1e1e1e;
+    border-radius: 12px;
+    padding: 3rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.nav-tabs .nav-link {
+    background-color: #252525;
+    color: #ccc;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    margin-right: 5px;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: #333;
+    color: #fff;
+    border-bottom: 2px solid #5286f3;
+}
+
+.form-label {
+    color: #ddd; /* Более светлый цвет подсказки */
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.form-control {
+    background-color: #333; /* Более темный фон для ввода */
+    color: #fff; /* Белый текст ввода */
+    border: 1px solid #555; /* Более темная граница */
+    border-radius: 8px;
+    padding: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-control::placeholder {
+    color: #ccc; /* Цвет placeholder */
+    opacity: 0.8; /* Уменьшенная прозрачность placeholder */
+}
+
+.form-control:focus {
+    background-color: #444; /* Еще более темный фон при фокусе */
+    border-color: #5286f3;
+    box-shadow: 0 0 0 0.2rem rgba(82, 134, 243, 0.25);
+    color: #fff; /* Белый текст при фокусе */
+}
+
+.btn-primary {
+    background-color: #5286f3; /* Основной цвет */
+    color: #fff; /* Белый текст */
+    border: 2px solid #5286f3; /* Бордер в цвет фона */
+    border-radius: 8px;
+    padding: 1rem 2rem;
+    transition: background-color 0.3s, color 0.3s, transform 0.2s, border-color 0.3s; /* Добавлен transition для border-color */
+}
+
+.btn-primary:hover {
+    background-color: #333; /* Темный фон при наведении */
+    color: #5286f3; /* Цвет текста меняется на основной цвет */
+    border-color: #5286f3; /* Бордер также меняет цвет */
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn-primary:focus {
+    box-shadow: 0 0 0 0.2rem rgba(82, 134, 243, 0.5);
+}
+
+.btn-primary:disabled {
+    background-color: #777;
+    color: #ccc; /* Светло-серый текст для disabled */
+    border-color: #777; /* Бордер для disabled */
+    cursor: not-allowed;
+}
+
+.spinner-border {
+    color: #fff;
+}
+
+.alert-danger {
+    background-color: #4a1515;
+    color: #ffb3b3;
+    border-color: #843534;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1.5rem;
+}
+
+.progress {
+    background-color: #252525;
+    border-radius: 8px;
+    height: 10px;
+    margin-bottom: 2rem;
+    overflow: hidden; /* Ensure rounded corners are visible */
+}
+
+.progress-bar {
+    background-color: #5286f3;
+    height: 100%;
+    width: 0%; /* Set in JS */
+    transition: width 0.3s ease-out;
+}
+
+#results-container {
+    margin-top: 2rem;
+}
+
+.card {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.card-header {
+    background-color: #252525;
+    border-bottom: 1px solid #333;
+    padding: 1.5rem 2rem;
+    border-radius: 12px 12px 0 0;
+}
+
+.card-header h3 {
+    color: #fff;
+    margin-bottom: 0;
+    font-size: 1.7rem;
+}
+
+.card-body {
+    padding: 2rem;
+}
+
+.page-preview {
+    margin-bottom: 3rem; /* Увеличен отступ снизу */
+    padding: 2rem; /* Увеличен внутренний отступ */
+    background-color: #2e2e2e; /* Фон немного светлее */
+    border-radius: 12px; /* Больший радиус скругления */
+    border: 1px solid #555; /* Более темная граница */
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); /* Тень */
+}
+
+.page-preview h4 {
+    color: #fff;
+    margin-top: 0;
+    margin-bottom: 1.5rem; /* Увеличен отступ снизу */
+    font-size: 1.8rem; /* Увеличен размер шрифта заголовка */
+    font-weight: bold; /* Жирный шрифт */
+}
+
+.page-preview pre {
+    background-color: #333;
+    color: #eee; /* Текст еще светлее */
+    padding: 1.5rem; /* Увеличен внутренний отступ */
+    border-radius: 8px; /* Больший радиус скругления */
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font-size: 1.1rem; /* Увеличен размер шрифта текста */
+    line-height: 1.7; /* Увеличен межстрочный интервал */
+}
+
+.image-preview {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin-top: 1rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.download-options button {
+    background-color: #333;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.7rem 1.2rem;
+    margin-left: 0.5rem;
+    transition: background-color 0.3s;
+}
+
+.download-options button:hover {
+    background-color: #444;
+}
+
+/* Скрытые элементы */
+.hidden {
+    display: none !important;
+}

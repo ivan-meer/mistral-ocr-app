@@ -1,0 +1,192 @@
+/* Стили для корректного отображения Markdown */
+body {
+    font-family: 'Inter', Arial, sans-serif; /* Изменен шрифт */
+    line-height: 1.7;
+    color: #e0e0e0; /* Более светлый текст */
+    background-color: #121212; /* Более темный фон */
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1000px; /* Увеличен макс. размер контейнера */
+    margin: 2rem auto; /* Увеличены отступы сверху и снизу */
+    padding: 2.5rem; /* Увеличен внутренний отступ */
+    background-color: #1e1e1e; /* Более светлый фон контейнера */
+    border-radius: 12px; /* Больший радиус скругления */
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); /* Усилена тень */
+    border: 1px solid #333; /* Добавлен бордер */
+}
+
+h1 {
+    font-size: 3rem; /* Увеличен размер заголовка */
+    margin-bottom: 2rem; /* Увеличен отступ снизу */
+    color: #fff;
+    letter-spacing: -1px; /* Уменьшен интервал между буквами */
+    text-align: center; /* Выравнивание по центру */
+}
+
+.markdown-content {
+    background-color: #252525; /* Фон контента Markdown */
+    border: 1px solid #444; /* Более темный бордер */
+    padding: 2rem; /* Увеличен внутренний отступ */
+    margin-bottom: 2rem; /* Увеличен отступ снизу */
+    overflow-x: auto;
+    border-radius: 8px; /* Больший радиус скругления */
+    line-height: 1.8; /* Увеличена межстрочный интервал */
+}
+
+/* Стили для markdown-контента */
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    color: #fff;
+    margin-top: 2rem; /* Увеличен отступ сверху */
+    margin-bottom: 0.8rem; /* Увеличен отступ снизу */
+    font-weight: bold; /* Жирный шрифт для заголовков */
+    letter-spacing: -0.5px; /* Уменьшен интервал между буквами */
+}
+
+.markdown-content h1 { font-size: 2.2rem; }
+.markdown-content h2 { font-size: 2rem; }
+.markdown-content h3 { font-size: 1.8rem; }
+.markdown-content h4 { font-size: 1.6rem; }
+.markdown-content h5 { font-size: 1.4rem; }
+.markdown-content h6 { font-size: 1.2rem; }
+
+.markdown-content p {
+    margin-bottom: 1.5rem; /* Увеличен отступ снизу */
+    color: #ccc; /* Цвет текста абзацев */
+}
+
+.markdown-content a {
+    color: #5286f3;
+    text-decoration: none;
+    font-weight: 500; /* Полужирный шрифт для ссылок */
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+    color: #7aa9f7; /* Цвет ссылок при наведении */
+}
+
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+    margin: 2rem 0; /* Увеличены отступы сверху и снизу */
+    border-radius: 8px; /* Больший радиус скругления */
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3); /* Тень для изображений */
+}
+
+.markdown-content pre {
+    background-color: #333; /* Фон для блоков кода */
+    padding: 1.5rem; /* Увеличен внутренний отступ */
+    border-radius: 8px; /* Больший радиус скругления */
+    overflow-x: auto;
+    margin: 1.5rem 0; /* Увеличены отступы сверху и снизу */
+    border: 1px solid #555; /* Более темный бордер */
+    font-size: 0.9rem; /* Уменьшен размер шрифта кода */
+    line-height: 1.6; /* Увеличен межстрочный интервал кода */
+}
+
+.markdown-content code {
+    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    background-color: #333; /* Фон для инлайнового кода */
+    padding: 0.3rem 0.6rem; /* Увеличены внутренние отступы */
+    border-radius: 5px; /* Больший радиус скругления */
+    font-size: 0.9rem; /* Уменьшен размер шрифта кода */
+    color: #ddd; /* Цвет текста кода */
+}
+
+.markdown-content blockquote {
+    border-left: 5px solid #5286f3; /* Более толстая полоса цитаты */
+    padding-left: 1.5rem; /* Увеличен отступ слева */
+    margin-left: 0;
+    color: #bbb; /* Цвет текста цитаты */
+    font-style: italic; /* Курсив для цитат */
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin-bottom: 1.5rem; /* Увеличен отступ снизу */
+    padding-left: 2.5rem; /* Увеличен отступ слева */
+    color: #ccc; /* Цвет текста списков */
+}
+
+.markdown-content li {
+    margin-bottom: 0.5rem; /* Отступ между элементами списка */
+}
+
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 2rem 0; /* Увеличены отступы сверху и снизу */
+    border: 1px solid #555; /* Более темный бордер для таблиц */
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    border: 1px solid #555; /* Более темный бордер для ячеек */
+    padding: 0.8rem; /* Увеличены внутренние отступы */
+    text-align: left;
+}
+
+.markdown-content table th {
+    background-color: #333; /* Фон для заголовков таблиц */
+    color: #fff; /* Цвет текста заголовков таблиц */
+    font-weight: bold; /* Жирный шрифт для заголовков таблиц */
+}
+
+.markdown-content table tr:nth-child(even) {
+    background-color: #2e2e2e; /* Цвет четных строк таблицы */
+}
+
+/* Кнопка "Назад" */
+.back-button {
+    display: inline-block;
+    background-color: #5286f3;
+    color: #fff;
+    padding: 0.8rem 1.5rem; /* Увеличены внутренние отступы */
+    border-radius: 8px; /* Больший радиус скругления */
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.3s; /* Увеличена длительность перехода */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); /* Тень для кнопок */
+}
+
+.back-button:hover {
+    background-color: #3b68e7; /* Цвет кнопки при наведении */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3); /* Усиленная тень при наведении */
+    transform: translateY(-2px); /* Небольшое смещение вверх при наведении */
+}
+
+/* Кнопка "Скачать Markdown" */
+.download-button {
+    display: inline-block;
+    background-color: #333;
+    color: #fff;
+    padding: 0.8rem 1.5rem; /* Увеличены внутренние отступы */
+    border-radius: 8px; /* Больший радиус скругления */
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.3s; /* Увеличена длительность перехода */
+    margin-left: 1.5rem; /* Увеличен отступ слева */
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); /* Тень для кнопок */
+}
+
+.download-button:hover {
+    background-color: #444; /* Цвет кнопки при наведении */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3); /* Усиленная тень при наведении */
+    transform: translateY(-2px); /* Небольшое смещение вверх при наведении */
+}
+
+.button-container {
+    display: flex;
+    gap: 1.5rem; /* Увеличен интервал между кнопками */
+    margin-top: 2rem; /* Увеличен отступ сверху */
+    justify-content: center; /* Выравнивание кнопок по центру */
+}
