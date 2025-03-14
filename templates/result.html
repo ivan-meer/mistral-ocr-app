@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результат OCR</title>
+    <style>
+        /* Стили для корректного отображения Markdown */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #fff;
+            background-color: #000;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #111;
+            border: 1px solid #333;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+        
+        .markdown-content {
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            border-radius: 4px;
+        }
+        
+        /* Стили для markdown-контента */
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            color: #fff;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .markdown-content h1 { font-size: 2rem; }
+        .markdown-content h2 { font-size: 1.75rem; }
+        .markdown-content h3 { font-size: 1.5rem; }
+        .markdown-content h4 { font-size: 1.25rem; }
+        .markdown-content h5 { font-size: 1rem; }
+        .markdown-content h6 { font-size: 0.875rem; }
+        
+        .markdown-content p {
+            margin-bottom: 1rem;
+        }
+        
+        .markdown-content a {
+            color: #5286f3;
+            text-decoration: none;
+        }
+        
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+        
+        .markdown-content img {
+            max-width: 100%;
+            height: auto;
+            margin: 1rem 0;
+            border-radius: 4px;
+        }
+        
+        .markdown-content pre {
+            background-color: #222;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            border: 1px solid #444;
+        }
+        
+        .markdown-content code {
+            font-family: Consolas, Monaco, 'Andale Mono', monospace;
+            background-color: #222;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.875rem;
+        }
+        
+        .markdown-content blockquote {
+            border-left: 4px solid #5286f3;
+            padding-left: 1rem;
+            margin-left: 0;
+            color: #ccc;
+        }
+        
+        .markdown-content ul,
+        .markdown-content ol {
+            margin-bottom: 1rem;
+            padding-left: 2rem;
+        }
+        
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1rem 0;
+        }
+        
+        .markdown-content table th,
+        .markdown-content table td {
+            border: 1px solid #444;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        
+        .markdown-content table th {
+            background-color: #222;
+        }
+        
+        .markdown-content table tr:nth-child(even) {
+            background-color: #1e1e1e;
+        }
+        
+        /* Кнопка "Назад" */
+        .back-button {
+            display: inline-block;
+            background-color: #5286f3;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        
+        .back-button:hover {
+            background-color: #3b68e7;
+        }
+        
+        /* Кнопка "Скачать Markdown" */
+        .download-button {
+            display: inline-block;
+            background-color: #333;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.2s;
+            margin-left: 1rem;
+            cursor: pointer;
+        }
+        
+        .download-button:hover {
+            background-color: #444;
+        }
+        
+        .button-container {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Результат OCR</h1>
+        
+        <div class="markdown-content">
+            {{ html_content|safe }}
+        </div>
+        
+        <div class="button-container">
+            <a href="/" class="back-button">
+                <i class="fas fa-arrow-left"></i> Назад
+            </a>
+            <a href="#" class="download-button" id="downloadBtn">
+                <i class="fas fa-download"></i> Скачать Markdown
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('downloadBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Получаем содержимое markdown
+            const markdownContent = `{{ markdown_content|replace('\n', '\\n')|replace('"', '\\"')|safe }}`;
+            
+            // Создаем Blob
+            const blob = new Blob([markdownContent], { type: 'text/markdown' });
+            
+            // Создаем URL для скачивания
+            const url = URL.createObjectURL(blob);
+            
+            // Создаем ссылку и инициируем скачивание
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ocr-result.md';
+            document.body.appendChild(a);
+            a.click();
+            
+            // Очищаем ресурсы
+            setTimeout(function() {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 0);
+        });
+    </script>
+</body>
+</html>

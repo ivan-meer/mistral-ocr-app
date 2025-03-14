@@ -1,204 +1,247 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>OCR Processing</title>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Mistral OCR Документов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-      /* Modern Reset */
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        background-color: #000;
-        color: #fff;
-        font-family: "Segoe UI", system-ui, sans-serif;
-        line-height: 1.6;
-        padding: 2rem;
-      }
-
-      .container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem;
-        background-color: #111;
-        border: 1px solid #333;
-      }
-
-      h1 {
-        font-size: 2.5rem;
-        margin-bottom: 2rem;
-        letter-spacing: -0.5px;
-      }
-
-      .endpoints {
-        margin: 2rem 0;
-        padding: 1.5rem;
-        background-color: #1a1a1a;
-        border: 1px solid #333;
-      }
-
-      .endpoints h3 {
-        margin-bottom: 1rem;
-        font-size: 1.2rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-
-      .endpoints p {
-        margin: 0.5rem 0;
-        font-family: monospace;
-        background-color: #222;
-        padding: 0.5rem;
-        border: 1px solid #444;
-      }
-
-      #ocrForm {
-        display: flex;
-        gap: 1rem;
-        margin: 2rem 0;
-        padding: 1.5rem;
-        background-color: #1a1a1a;
-        border: 1px solid #333;
-      }
-
-      input[type="text"],
-      select {
-        flex: 1;
-        padding: 0.75rem;
-        background-color: #222;
-        border: 1px solid #444;
-        color: #fff;
-        font-size: 1rem;
-        min-width: 0;
-      }
-
-      button {
-        padding: 0.75rem 1.5rem;
-        background-color: #fff;
-        color: #000;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        transition: background-color 0.2s;
-      }
-
-      button:hover {
-        background-color: #ccc;
-      }
-
-      #downloadBtn {
-        display: none;
-        margin: 1rem 0;
-        background-color: #333;
-        color: #fff;
-      }
-
-      #downloadBtn:hover {
-        background-color: #444;
-      }
-
-      #result {
-        margin-top: 2rem;
-        padding: 1.5rem;
-        background-color: #1a1a1a;
-        border: 1px solid #333;
-        white-space: pre-wrap;
-        font-family: monospace;
-        overflow-x: auto;
-      }
-
-      /* Loading state */
-      .processing {
-        opacity: 0.7;
-        pointer-events: none;
-      }
-
-      /* Error states */
-      .error {
-        border-color: #ff4444 !important;
-      }
-
-      .error-text {
-        color: #ff4444;
-        margin-top: 0.5rem;
-        font-size: 0.9rem;
-      }
+        body { 
+            background-color: #121212; 
+            color: #e0e0e0;
+            font-family: 'Inter', Arial, sans-serif;
+        }
+        .progress {
+            height: 5px;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            background-color: #4CAF50;
+        }
+        .container-fluid {
+            max-width: 1200px;
+        }
+        .upload-container {
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        /* ... остальные стили остаются прежними ... */
     </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>PDF OCR WITH MISTRAL</h1>
+</head>
+<body>
+    <div class="container-fluid py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="upload-container">
+                    <h2 class="text-center mb-4">OCR Документов</h2>
+                    
+                    <div class="progress mb-3" id="upload-progress" style="display:none;">
+                        <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
 
-      <div class="endpoints">
-        <h3>Available Endpoints</h3>
-        <p>/api/markdown?url={PDF_url}</p>
-        <p>/api/json?url={PDF_url}</p>
-      </div>
+                    <ul class="nav nav-tabs mb-4" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-upload" type="button">Файл</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="url-tab" data-bs-toggle="tab" data-bs-target="#url-upload" type="button">URL</button>
+                        </li>
+                    </ul>
 
-      <form id="ocrForm">
-        <input type="text" name="url" placeholder="URL to PDF document" required />
-        <select name="format">
-          <option value="markdown">Markdown</option>
-          <option value="json">JSON</option>
-        </select>
-        <button type="submit">Process</button>
-      </form>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="file-upload">
+                            <form id="file-upload-form">
+                                <input type="hidden" name="processing_type" value="file">
+                                <div class="mb-3">
+                                    <input class="form-control" type="file" id="document-file" name="document" 
+                                           accept=".pdf,.png,.jpg,.jpeg,.docx">
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <span id="file-submit-text">Обработать документ</span>
+                                    <div id="file-loading-spinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display:none;">
+                                        <span class="visually-hidden">Загрузка...</span>
+                                    </div>
+                                </button>
+                            </form>
+                        </div>
 
-      <button id="downloadBtn">Download Result</button>
-      <div id="result"></div>
+                        <div class="tab-pane fade" id="url-upload">
+                            <form id="url-upload-form">
+                                <input type="hidden" name="processing_type" value="url">
+                                <div class="mb-3">
+                                    <input class="form-control" type="url" name="document" 
+                                           placeholder="Введите URL документа" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <span id="url-submit-text">Обработать документ</span>
+                                    <div id="url-loading-spinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display:none;">
+                                        <span class="visually-hidden">Загрузка...</span>
+                                    </div>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="error-message" class="alert alert-danger mt-3" style="display:none;"></div>
+
+                    <div id="results-container" class="mt-4" style="display:none;">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h3 class="mb-0">Результаты обработки</h3>
+                                <div class="download-options">
+                                    <button id="download-markdown" class="btn btn-sm btn-outline-light me-2">
+                                        <i class="bi bi-file-earmark-text"></i> Markdown
+                                    </button>
+                                    <button id="download-json" class="btn btn-sm btn-outline-light">
+                                        <i class="bi bi-file-earmark-code"></i> JSON
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="pages-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
-      document.getElementById("ocrForm").onsubmit = async (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const resultDiv = document.getElementById("result");
-        const downloadBtn = document.getElementById("downloadBtn");
+        let currentDocumentData = null;
 
-        try {
-          resultDiv.textContent = "Processing...";
-          downloadBtn.style.display = "none";
-
-          const response = await fetch("/process_ocr", {
-            method: "POST",
-            body: new FormData(form),
-          });
-
-          const data = await response.json();
-
-          if (data.status === "success") {
-            const content =
-              typeof data.data === "object"
-                ? JSON.stringify(data.data, null, 2)
-                : data.data;
-
-            resultDiv.textContent = content;
-
-            // Setup download button
-            downloadBtn.style.display = "block";
-            downloadBtn.onclick = () => {
-              const blob = new Blob([content], {
-                type:
-                  data.format === "json" ? "application/json" : "text/markdown",
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `result.${data.format === "json" ? "json" : "md"}`;
-              a.click();
-              URL.revokeObjectURL(url);
-            };
-          } else {
-            resultDiv.textContent = `Error: ${data.message}`;
-          }
-        } catch (error) {
-          resultDiv.textContent = `Error: ${error.message}`;
+        function updateProgress(progress) {
+            const progressBar = document.getElementById('upload-progress');
+            const progressBarInner = progressBar.querySelector('.progress-bar');
+            
+            progressBar.style.display = 'block';
+            progressBarInner.style.width = `${progress}%`;
+            progressBarInner.setAttribute('aria-valuenow', progress);
         }
-      };
+
+        function processDocument(form, event) {
+            event.preventDefault();
+            
+            const processingType = form.querySelector('input[name="processing_type"]').value;
+            const submitText = document.getElementById(`${processingType}-submit-text`);
+            const loadingSpinner = document.getElementById(`${processingType}-loading-spinner`);
+            const errorMessage = document.getElementById('error-message');
+            const resultsContainer = document.getElementById('results-container');
+            const pagesContainer = document.getElementById('pages-container');
+            const uploadProgress = document.getElementById('upload-progress');
+
+            // Reset states
+            errorMessage.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            pagesContainer.innerHTML = '';
+            uploadProgress.style.display = 'none';
+            
+            // Show loading
+            submitText.textContent = 'Обработка...';
+            loadingSpinner.style.display = 'inline-block';
+            
+            const formData = new FormData(form);
+
+            // Создаем объект XMLHttpRequest для отслеживания прогресса
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+
+            // Обработчик прогресса загрузки
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    updateProgress(percentComplete);
+                }
+            };
+
+            // Обработчик успешной загрузки
+            xhr.onload = function() {
+                // Парсим ответ
+                const data = JSON.parse(xhr.responseText);
+
+                // Скрываем индикаторы загрузки
+                submitText.textContent = 'Обработать документ';
+                loadingSpinner.style.display = 'none';
+                updateProgress(100);
+
+                if (data.status === 'success') {
+                    currentDocumentData = data.data;
+                    resultsContainer.style.display = 'block';
+
+                    data.data.pages.forEach(page => {
+                        const pageDiv = document.createElement('div');
+                        pageDiv.classList.add('page-preview');
+                        
+                        const pageTitle = document.createElement('h4');
+                        pageTitle.textContent = `Страница ${page.index + 1}`;
+                        pageDiv.appendChild(pageTitle);
+
+                        const markdownPre = document.createElement('pre');
+                        markdownPre.textContent = page.markdown;
+                        pageDiv.appendChild(markdownPre);
+
+                        if (page.images && page.images.length) {
+                            page.images.forEach(img => {
+                                const imgElem = document.createElement('img');
+                                imgElem.src = `/image/${img.path.split('\\').pop()}`;
+                                imgElem.classList.add('img-fluid', 'image-preview');
+                                pageDiv.appendChild(imgElem);
+                            });
+                        }
+
+                        pagesContainer.appendChild(pageDiv);
+                    });
+                } else {
+                    errorMessage.textContent = data.message;
+                    errorMessage.style.display = 'block';
+                }
+            };
+
+            // Обработчик ошибок
+            xhr.onerror = function() {
+                submitText.textContent = 'Обработать документ';
+                loadingSpinner.style.display = 'none';
+
+                errorMessage.textContent = 'Произошла ошибка при загрузке';
+                errorMessage.style.display = 'block';
+            };
+
+            // Отправляем запрос
+            xhr.send(formData);
+        }
+
+        // Добавляем обработчики событий
+        document.getElementById('file-upload-form').addEventListener('submit', (e) => processDocument(e.target, e));
+        document.getElementById('url-upload-form').addEventListener('submit', (e) => processDocument(e.target, e));
+
+        // Скачивание результатов (прежний код остается без изменений)
+        document.getElementById('download-markdown').addEventListener('click', () => {
+            if (!currentDocumentData) return;
+
+            const markdownContent = currentDocumentData.pages
+                .map(page => `# Страница ${page.index + 1}\n\n${page.markdown}`)
+                .join('\n\n---\n\n');
+
+            const blob = new Blob([markdownContent], { type: 'text/markdown' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'document_ocr.md';
+            link.click();
+        });
+
+        document.getElementById('download-json').addEventListener('click', () => {
+            if (!currentDocumentData) return;
+
+            const blob = new Blob([JSON.stringify(currentDocumentData, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'document_ocr.json';
+            link.click();
+        });
     </script>
-  </body>
+</body>
 </html>

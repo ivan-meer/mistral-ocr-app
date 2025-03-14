@@ -1,97 +1,69 @@
-/* Дополнительные стили, не определенные в Tailwind */
-
-/* Стили для опций формата */
-.format-option {
-    transition: all 0.2s;
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
 }
 
-.format-option.selected {
-    border-color: var(--primary-500, #5286f3);
-    background-color: var(--primary-50, #f5f7ff);
+.container {
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
 }
 
-/* Анимация для уведомлений */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
 }
 
-@keyframes fadeOut {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(-10px); }
+form {
+    display: flex;
+    flex-direction: column;
 }
 
-.fade-in {
-    animation: fadeIn 0.3s ease-in-out forwards;
+input[type="url"], select {
+    margin-bottom: 15px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
 }
 
-.fade-out {
-    animation: fadeOut 0.3s ease-in-out forwards;
+button {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
 }
 
-/* Стили для кнопки копирования */
-.copy-success {
-    color: #10B981;
+button:hover {
+    background-color: #45a049;
 }
 
-/* Стили для примеров кода в документации */
-code {
-    background: #f1f5f9;
-    padding: 0.125rem 0.25rem;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
-    color: #3730a3;
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
 }
 
-pre {
-    background: #f8fafc;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    overflow-x: auto;
-    border: 1px solid #e2e8f0;
+#error-message {
+    color: red;
+    text-align: center;
+    margin-top: 15px;
 }
 
-pre code {
-    background: transparent;
-    padding: 0;
-    color: #334155;
-}
-
-/* Улучшение отображения для маленьких экранов */
-@media (max-width: 640px) {
-    .container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-}
-
-/* Стили для перетаскивания файлов */
-#dropZone.highlight {
-    border-color: var(--primary-500, #5286f3);
-    background-color: var(--primary-50, #f5f7ff);
-}
-
-/* Стили для предупреждений и ошибок */
-.alert-success {
-    background-color: #ECFDF5;
-    border-color: #10B981;
-    color: #047857;
-}
-
-.alert-error {
-    background-color: #FEF2F2;
-    border-color: #EF4444;
-    color: #B91C1C;
-}
-
-.alert-warning {
-    background-color: #FFFBEB;
-    border-color: #F59E0B;
-    color: #B45309;
-}
-
-.alert-info {
-    background-color: #EFF6FF;
-    border-color: #3B82F6;
-    color: #1D4ED8;
+#loading {
+    text-align: center;
+    color: #666;
+    margin-top: 15px;
 }
