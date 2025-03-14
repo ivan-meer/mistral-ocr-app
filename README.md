@@ -15,7 +15,7 @@
 
 ## Структура проекта
 
-```
+\`\`\`
 mistral-ocr-app/
 ├── app.py                   # Основное Flask-приложение
 ├── .env                     # Файл с переменными окружения
@@ -28,45 +28,45 @@ mistral-ocr-app/
 ├── templates/
 │   └── index.html           # Основной HTML-шаблон
 └── requirements.txt         # Зависимости проекта
-```
+\`\`\`
 
 ## Требования
 
 - Python 3.8 или выше
 - API-ключ Mistral AI с доступом к OCR (опционально, можно использовать демо-режим)
 
-## Установка и запуск
+## Установка и запуск (Python)
 
 1. **Клонируйте репозиторий**
 
-```bash
+\`\`\`bash
 git clone https://github.com/ivan-meer/mistral-ocr-app.git
 cd mistral-ocr-app
-```
+\`\`\`
 
 2. **Создайте и активируйте виртуальное окружение**
 
-```bash
+\`\`\`bash
 # для Windows
 python -m venv venv
-venv\Scripts\activate
+venv\\Scripts\\activate
 
 # для macOS/Linux
 python -m venv venv
 source venv/bin/activate
-```
+\`\`\`
 
 3. **Установите зависимости**
 
-```bash
+\`\`\`bash
 pip install -r requirements.txt
-```
+\`\`\`
 
 4. **Настройте переменные окружения**
 
-Создайте файл `.env` на основе `.env.example`:
+Создайте файл \`.env\` на основе \`.env.example\`:
 
-```
+\`\`\`
 # Ваш API ключ Mistral AI (замените на свой ключ)
 MISTRAL_API_KEY=your_mistral_api_key_here
 
@@ -76,15 +76,15 @@ USE_MOCK_OCR=true
 # Настройки сервера
 PORT=5000
 DEBUG=True
-```
+\`\`\`
 
-Если у вас нет API-ключа Mistral с доступом к OCR, оставьте `USE_MOCK_OCR=true` для использования демо-режима.
+Если у вас нет API-ключа Mistral с доступом к OCR, оставьте \`USE_MOCK_OCR=true\` для использования демо-режима.
 
 5. **Запустите приложение**
 
-```bash
+\`\`\`bash
 python app.py
-```
+\`\`\`
 
 Приложение будет доступно по адресу [http://localhost:5000](http://localhost:5000)
 
@@ -117,9 +117,15 @@ python app.py
 
 Приложение предоставляет следующие API-эндпоинты:
 
-- `GET /api/markdown?url={PDF_url}` - Получение результатов OCR в формате Markdown
-- `GET /api/json?url={PDF_url}` - Получение полных результатов OCR в формате JSON
-- `GET /api/status` - Проверка статуса подключения к API Mistral
+- \`GET /api/markdown?url={PDF_url}\` - Получение результатов OCR в формате Markdown
+- \`GET /api/json?url={PDF_url}\` - Получение полных результатов OCR в формате JSON
+- \`GET /api/status\` - Проверка статуса подключения к API Mistral
+
+## Cloudflare worker
+
+Для Cloudflare worker скопируйте код из \`index.js\` в Cloudflare worker.
+
+![Главная страница](main.png)
 
 ## Ограничения
 
