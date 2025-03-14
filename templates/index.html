@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>OCR Processing</title>
+    <style>
+      /* Modern Reset */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background-color: #000;
+        color: #fff;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        line-height: 1.6;
+        padding: 2rem;
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem;
+        background-color: #111;
+        border: 1px solid #333;
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 2rem;
+        letter-spacing: -0.5px;
+      }
+
+      .endpoints {
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background-color: #1a1a1a;
+        border: 1px solid #333;
+      }
+
+      .endpoints h3 {
+        margin-bottom: 1rem;
+        font-size: 1.2rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .endpoints p {
+        margin: 0.5rem 0;
+        font-family: monospace;
+        background-color: #222;
+        padding: 0.5rem;
+        border: 1px solid #444;
+      }
+
+      #ocrForm {
+        display: flex;
+        gap: 1rem;
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background-color: #1a1a1a;
+        border: 1px solid #333;
+      }
+
+      input[type="text"],
+      select {
+        flex: 1;
+        padding: 0.75rem;
+        background-color: #222;
+        border: 1px solid #444;
+        color: #fff;
+        font-size: 1rem;
+        min-width: 0;
+      }
+
+      button {
+        padding: 0.75rem 1.5rem;
+        background-color: #fff;
+        color: #000;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        background-color: #ccc;
+      }
+
+      #downloadBtn {
+        display: none;
+        margin: 1rem 0;
+        background-color: #333;
+        color: #fff;
+      }
+
+      #downloadBtn:hover {
+        background-color: #444;
+      }
+
+      #result {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background-color: #1a1a1a;
+        border: 1px solid #333;
+        white-space: pre-wrap;
+        font-family: monospace;
+        overflow-x: auto;
+      }
+
+      /* Loading state */
+      .processing {
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      /* Error states */
+      .error {
+        border-color: #ff4444 !important;
+      }
+
+      .error-text {
+        color: #ff4444;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>PDF OCR WITH MISTRAL</h1>
+
+      <div class="endpoints">
+        <h3>Available Endpoints</h3>
+        <p>/api/markdown?url={PDF_url}</p>
+        <p>/api/json?url={PDF_url}</p>
+      </div>
+
+      <form id="ocrForm">
+        <input type="text" name="url" placeholder="URL to PDF document" required />
+        <select name="format">
+          <option value="markdown">Markdown</option>
+          <option value="json">JSON</option>
+        </select>
+        <button type="submit">Process</button>
+      </form>
+
+      <button id="downloadBtn">Download Result</button>
+      <div id="result"></div>
+    </div>
+
+    <script>
+      document.getElementById("ocrForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const resultDiv = document.getElementById("result");
+        const downloadBtn = document.getElementById("downloadBtn");
+
+        try {
+          resultDiv.textContent = "Processing...";
+          downloadBtn.style.display = "none";
+
+          const response = await fetch("/process_ocr", {
+            method: "POST",
+            body: new FormData(form),
+          });
+
+          const data = await response.json();
+
+          if (data.status === "success") {
+            const content =
+              typeof data.data === "object"
+                ? JSON.stringify(data.data, null, 2)
+                : data.data;
+
+            resultDiv.textContent = content;
+
+            // Setup download button
+            downloadBtn.style.display = "block";
+            downloadBtn.onclick = () => {
+              const blob = new Blob([content], {
+                type:
+                  data.format === "json" ? "application/json" : "text/markdown",
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `result.${data.format === "json" ? "json" : "md"}`;
+              a.click();
+              URL.revokeObjectURL(url);
+            };
+          } else {
+            resultDiv.textContent = `Error: ${data.message}`;
+          }
+        } catch (error) {
+          resultDiv.textContent = `Error: ${error.message}`;
+        }
+      };
+    </script>
+  </body>
+</html>

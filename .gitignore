@@ -1,0 +1,54 @@
+# Виртуальное окружение
+venv/
+env/
+ENV/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Файлы с переменными окружения
+.env
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
+
+# Директория IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Автогенерируемые файлы документации
+docs/_build/
+docs/api/
+
+# Папки, созданные пользователем
+upload/
+uploads/
+data/

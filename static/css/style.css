@@ -1,0 +1,97 @@
+/* Дополнительные стили, не определенные в Tailwind */
+
+/* Стили для опций формата */
+.format-option {
+    transition: all 0.2s;
+}
+
+.format-option.selected {
+    border-color: var(--primary-500, #5286f3);
+    background-color: var(--primary-50, #f5f7ff);
+}
+
+/* Анимация для уведомлений */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-in-out forwards;
+}
+
+/* Стили для кнопки копирования */
+.copy-success {
+    color: #10B981;
+}
+
+/* Стили для примеров кода в документации */
+code {
+    background: #f1f5f9;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    color: #3730a3;
+}
+
+pre {
+    background: #f8fafc;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+}
+
+pre code {
+    background: transparent;
+    padding: 0;
+    color: #334155;
+}
+
+/* Улучшение отображения для маленьких экранов */
+@media (max-width: 640px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* Стили для перетаскивания файлов */
+#dropZone.highlight {
+    border-color: var(--primary-500, #5286f3);
+    background-color: var(--primary-50, #f5f7ff);
+}
+
+/* Стили для предупреждений и ошибок */
+.alert-success {
+    background-color: #ECFDF5;
+    border-color: #10B981;
+    color: #047857;
+}
+
+.alert-error {
+    background-color: #FEF2F2;
+    border-color: #EF4444;
+    color: #B91C1C;
+}
+
+.alert-warning {
+    background-color: #FFFBEB;
+    border-color: #F59E0B;
+    color: #B45309;
+}
+
+.alert-info {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+    color: #1D4ED8;
+}
