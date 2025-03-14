@@ -1,8 +1,8 @@
 # Mistral OCR - Конвертер PDF в Markdown/JSON
 
-Веб-приложение на базе Flask для извлечения текста и изображений из PDF-документов с использованием технологии Mistral OCR API.
+![Mistral OCR App Screenshot](assets/img/banner.jpg)
 
-![Mistral OCR App Screenshot](https://static.mistral.ai/mistral-medium.svg)
+Веб-приложение на базе Flask для извлечения текста и изображений из PDF-документов с использованием технологии Mistral OCR API.
 
 ## Функциональные возможности
 
@@ -40,7 +40,7 @@ mistral-ocr-app/
 1. **Клонируйте репозиторий**
 
 ```bash
-git clone https://github.com/yourusername/mistral-ocr-app.git
+git clone https://github.com/ivan-meer/mistral-ocr-app.git
 cd mistral-ocr-app
 ```
 
