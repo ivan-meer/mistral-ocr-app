@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_cors import CORS
 from mistralai import Mistral
 import os
 import json
@@ -7,316 +8,493 @@ import tempfile
 import logging
 import traceback
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import mimetypes
 
-# Загрузка переменных окружения
+# --- Инициализация и Конфигурация ---
 load_dotenv()
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s: %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-# Инициализация Flask
 app = Flask(__name__)
+CORS(app) # Включаем CORS для всех маршрутов
 
-# Конфигурация
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 МБ макс размер файла
-app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
+# Конфигурация приложения
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_FILE_SIZE_MB', 50)) * 1024 * 1024
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', tempfile.gettempdir())
+app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'png', 'jpg', 'jpeg', 'docx'} # TODO: docx не обрабатывается OCR Mistral напрямую
+app.config['MISTRAL_API_KEY'] = os.environ.get("MISTRAL_API_KEY")
+app.config['USE_MOCK_OCR'] = os.environ.get('USE_MOCK_OCR', 'False').lower() == 'true'
 
-def download_url_file(url):
-    """
-    Загрузка файла по URL
-    
-    TODO: 
-    - Добавить проверку типа файла
-    - Ограничение размера файла
-    """
-    try:
-        # Проверка корректности URL
-        parsed_url = urlparse(url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            raise ValueError("Некорректный URL")
+if not app.config['MISTRAL_API_KEY'] and not app.config['USE_MOCK_OCR']:
+    logger.warning("MISTRAL_API_KEY не установлен, и USE_MOCK_OCR установлен в False. API запросы не будут работать.")
 
-        # Проверка, является ли URL Google Drive
-        if parsed_url.netloc == 'drive.google.com':
-            file_id = None
-            if parsed_url.path.startswith('/file/d/'):
-                # URL типа /file/d/FILE_ID/...
-                file_id = parsed_url.path.split('/')[3]
-            elif parsed_url.path.startswith('/uc'):
-                # URL типа /uc?export=download&id=FILE_ID
-                file_id = request.args.get('id')
-            
-            if file_id:
-                # Преобразование URL Google Drive в URL для скачивания
-                url = f'https://drive.google.com/uc?export=download&id={file_id}'
-    except ValueError:
-        pass
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка загрузки файла: {e}")
-        raise ValueError(f"Не удалось загрузить файл: {e}")
-
-    # Получение расширения файла
-    file_ext = os.path.splitext(parsed_url.path)[1] or '.pdf'
+# --- Вспомогательные функции ---
+def allowed_file(filename):
+    """Проверяет, разрешено ли расширение файла."""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def get_mime_type_by_filename(filename):
-    """
-    Определение MIME-типа файла по имени файла
-    """
+    """Определяет MIME-тип файла по имени файла."""
     mime_type, _ = mimetypes.guess_type(filename)
-    return mime_type or 'application/octet-stream' # Дефолтный MIME-тип
+    return mime_type or 'application/octet-stream'
 
-def process_ocr_document(file_path, include_images=True):
-    """
-    Основная функция OCR обработки документа
-    """
+def handle_google_drive_url(url):
+    """Преобразует URL Google Drive в прямой URL для скачивания."""
+    parsed_url = urlparse(url)
+    if parsed_url.netloc == 'drive.google.com':
+        file_id = None
+        if parsed_url.path.startswith('/file/d/'):
+            file_id = parsed_url.path.split('/')[3]
+        elif parsed_url.path.startswith('/uc'):
+            # Попытка извлечь id из query параметров
+            query_params = dict(qc.split("=") for qc in parsed_url.query.split("&"))
+            file_id = query_params.get('id')
+
+        if file_id:
+            return f'https://drive.google.com/uc?export=download&id={file_id}'
+    return url
+
+def download_file_from_url(url, save_path):
+    """Загружает файл по URL и сохраняет его локально."""
     try:
-        # Получение API-ключа
-        api_key = os.environ.get("MISTRAL_API_KEY")
-        if not api_key:
-            raise ValueError("API-ключ не установлен")
+        url = handle_google_drive_url(url)
+        response = requests.get(url, stream=True, timeout=30) # 30 секунд таймаут
+        response.raise_for_status()
 
-        # Инициализация клиента Mistral
-        client = Mistral(api_key=api_key)
+        # Проверка Content-Type (если возможно)
+        content_type = response.headers.get('Content-Type', '').lower()
+        # TODO: Добавить более строгую проверку MIME-типов на основе ALLOWED_EXTENSIONS
+        # Например, application/pdf, image/jpeg, image/png
+        # if not any(allowed_mime in content_type for allowed_mime in ['pdf', 'jpeg', 'png']):
+        #     raise ValueError(f"Неподдерживаемый тип контента: {content_type}")
 
-        # Определение MIME-типа файла
-        mime_type = None
-        if file_path:
-            mime_type = get_mime_type_by_filename(file_path)
+        # Проверка размера файла (если Content-Length доступен)
+        content_length = response.headers.get('Content-Length')
+        if content_length and int(content_length) > app.config['MAX_CONTENT_LENGTH']:
+            raise ValueError(f"Файл слишком большой. Максимальный размер: {app.config['MAX_CONTENT_LENGTH'] // (1024*1024)}MB")
 
-        # Загрузка файла с указанием MIME-типа
-        try:
-            with open(file_path, "rb") as file:
-                uploaded_file = client.files.upload(
-                    file={
-                        "file_name": os.path.basename(file_path),
-                        "content": file,
-                        "mime_type": mime_type, # Явное указание MIME-типа
-                    },
-                    purpose="ocr"
-                )
-        except Exception as e:
-            logger.error(f"Ошибка загрузки файла в Mistral API: {str(e)}")
-            raise
-
-        # Получение подписанного URL
-        signed_url = client.files.get_signed_url(file_id=uploaded_file.id)
-
-        # OCR-обработка
-        ocr_response = client.ocr.process(
-            model="mistral-ocr-latest",
-            document={
-                "type": "document_url",
-                "document_url": signed_url.url,
-            },
-            include_image_base64=include_images
-        )
-
-        # Обработка результатов
-        result = {
-            "document_url": signed_url.url,
-            "pages": []
-        }
-
-        for page in ocr_response.pages:
-            page_data = {
-                "index": page.index,
-                "markdown": page.markdown,
-                "images": []
-            }
-
-            # Сохранение изображений
-            if include_images:
-                for img in page.images:
-                    # Декодирование base64
-                    img_data = base64.b64decode(img.image_base64.split(',')[1])
-                    
-                    # Генерация уникального имени файла
-                    img_filename = f"page_{page.index}_img_{img.id}.png"
-                    img_path = os.path.join(app.config['UPLOAD_FOLDER'], img_filename)
-                    
-                    # Сохранение изображения
-                    with open(img_path, "wb") as img_file:
-                        img_file.write(img_data)
-                    
-                    page_data["images"].append({
-                        "id": img.id,
-                        "path": img_path
-                    })
-
-            result["pages"].append(page_data)
-
-        # Сохранение результатов в файлы
-        markdown_file, json_file = save_results_to_files(
-            result, app.config['UPLOAD_FOLDER']
-        )
-
-        # Возврат результатов и имен файлов
-        return {
-            "document_url": signed_url.url,
-            "pages": result["pages"],
-            "markdown_file": markdown_file,
-            "json_file": json_file
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка OCR: {str(e)}")
-        logger.error(traceback.format_exc())
+        with open(save_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return save_path
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка загрузки файла по URL {url}: {e}")
+        raise ValueError(f"Не удалось загрузить файл: {e}")
+    except ValueError as e:
+        logger.error(f"Ошибка обработки URL {url}: {e}")
         raise
 
-def save_results_to_files(result_data, upload_folder):
-    """
-    Сохранение результатов OCR в файлы Markdown и JSON
-    """
+# --- Функции OCR ---
+def mock_ocr_processing(file_path, include_images=True):
+    """Имитация ответа OCR API для демонстрационного режима."""
+    logger.info(f"Использование мокового OCR для файла: {file_path}")
+    base_filename = os.path.basename(file_path)
+    mock_pages = [
+        {
+            "index": 0,
+            "markdown": f"# Страница 1 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со **страницы 1**.",
+            "images": []
+        },
+        {
+            "index": 1,
+            "markdown": f"# Страница 2 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со *страницы 2*.\n\n![демо_изображение](placeholder.png)",
+            "images": [
+                {"id": "mock_img_1", "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="} # 1x1 pixel black
+            ] if include_images else []
+        }
+    ]
+    # Имитация сохранения файлов
+    mock_md_filename = f"mock_ocr_{os.urandom(8).hex()}.md"
+    mock_json_filename = f"mock_ocr_{os.urandom(8).hex()}.json"
+
+    # Создание пустых файлов для имитации
+    open(os.path.join(app.config['UPLOAD_FOLDER'], mock_md_filename), 'w').close()
+    open(os.path.join(app.config['UPLOAD_FOLDER'], mock_json_filename), 'w').close()
+
+    return {
+        "document_url": f"mock_url_for_{base_filename}",
+        "pages": mock_pages,
+        "markdown_file": mock_md_filename,
+        "json_file": mock_json_filename
+    }
+
+def mistral_ocr_processing(file_path, include_images=True):
+    """Обрабатывает документ с помощью Mistral OCR API."""
+    if not app.config['MISTRAL_API_KEY']:
+        raise ValueError("API-ключ Mistral не установлен.")
+
+    client = Mistral(api_key=app.config['MISTRAL_API_KEY'])
+    mime_type = get_mime_type_by_filename(file_path)
+
+    try:
+        with open(file_path, "rb") as f:
+            uploaded_file = client.files.upload(
+                file={"file_name": os.path.basename(file_path), "content": f, "mime_type": mime_type},
+                purpose="ocr"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка загрузки файла в Mistral API: {e}")
+        raise ValueError(f"Ошибка взаимодействия с Mistral API при загрузке файла: {e}")
+
+    signed_url = client.files.get_signed_url(file_id=uploaded_file.id)
+
+    try:
+        ocr_response = client.ocr.process(
+            model="mistral-ocr-latest",
+            document={"type": "document_url", "document_url": signed_url.url},
+            include_image_base64=include_images
+        )
+    except Exception as e:
+        logger.error(f"Ошибка OCR обработки в Mistral API: {e}")
+        raise ValueError(f"Ошибка взаимодействия с Mistral API при OCR обработке: {e}")
+
+    processed_pages = []
+    for page in ocr_response.pages:
+        page_data = {"index": page.index, "markdown": page.markdown, "images": []}
+        if include_images and page.images:
+            for img in page.images:
+                try:
+                    img_data = base64.b64decode(img.image_base64.split(',')[1])
+                    img_filename = f"page_{page.index}_img_{img.id}.png"
+                    img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
+                    with open(img_path, "wb") as img_file:
+                        img_file.write(img_data)
+                    page_data["images"].append({"id": img.id, "path": img_path})
+                except Exception as e:
+                    logger.error(f"Ошибка сохранения изображения {img.id} со страницы {page.index}: {e}")
+        processed_pages.append(page_data)
+
+    return {"document_url": signed_url.url, "pages": processed_pages}
+
+
+def process_ocr_document(file_path, include_images=True):
+    """Выбирает метод обработки OCR (моковый или реальный) и сохраняет результаты."""
+    try:
+        if app.config['USE_MOCK_OCR']:
+            ocr_result = mock_ocr_processing(file_path, include_images)
+        else:
+            ocr_result = mistral_ocr_processing(file_path, include_images)
+
+        # Сохранение результатов в файлы происходит после получения данных от OCR
+        markdown_filename, json_filename = save_results_to_files(
+            ocr_result, app.config['UPLOAD_FOLDER'], include_images
+        )
+        ocr_result["markdown_file"] = markdown_filename
+        ocr_result["json_file"] = json_filename
+
+        return ocr_result
+
+    except ValueError as e: # Ошибки, связанные с API ключом или взаимодействием с API
+        raise
+    except Exception as e:
+        logger.error(f"Непредвиденная ошибка OCR: {e}\n{traceback.format_exc()}")
+        raise ValueError(f"Внутренняя ошибка сервера при OCR обработке: {e}")
+
+
+def save_results_to_files(result_data, upload_folder, include_images=True):
+    """Сохраняет результаты OCR в файлы Markdown и JSON."""
     try:
         # Markdown
         markdown_content_pages = []
-        for page in result_data['pages']:
-            page_markdown = f"# Страница {page['index'] + 1}\n\n{page['markdown']}"
-            if page['images']:
-                for img in page['images']:
-                    # Чтение изображения и кодирование в base64
-                    with open(img['path'], "rb") as image_file:
-                        image_data = base64.b64encode(image_file.read()).decode('utf-8')
-                    # Вставка изображения в Markdown
-                    page_markdown += f"\n\n![image](data:image/png;base64,{image_data})\n\n"
+        for page in result_data.get('pages', []):
+            page_markdown = f"# Страница {page.get('index', 0) + 1}\n\n{page.get('markdown', '')}"
+            if include_images and page.get('images'):
+                for img_info in page['images']:
+                    img_path = img_info.get('path')
+                    # Если это моковый режим и путь не существует, используем base64 напрямую
+                    if app.config['USE_MOCK_OCR'] and img_info.get('image_base64') and not (img_path and os.path.exists(img_path)):
+                        image_data_b64 = img_info['image_base64']
+                        if not image_data_b64.startswith('data:image'):
+                             image_data_b64 = f"data:image/png;base64,{image_data_b64.split(',')[-1]}" # Убедимся что есть префикс
+                        page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64.split(',')[-1]})\n\n"
+                    elif img_path and os.path.exists(img_path):
+                        with open(img_path, "rb") as image_file:
+                            image_data_b64 = base64.b64encode(image_file.read()).decode('utf-8')
+                        page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64})\n\n"
+                    else:
+                        logger.warning(f"Изображение не найдено по пути: {img_path} для страницы {page.get('index')}")
+
             markdown_content_pages.append(page_markdown)
 
         markdown_content = "\n\n---\n\n".join(markdown_content_pages)
         markdown_filename = f"document_ocr_{os.urandom(8).hex()}.md"
-        markdown_filepath = os.path.join(upload_folder, markdown_filename)
+        markdown_filepath = os.path.join(upload_folder, secure_filename(markdown_filename))
         with open(markdown_filepath, "w", encoding="utf-8") as md_file:
             md_file.write(markdown_content)
 
         # JSON
         json_filename = f"document_ocr_{os.urandom(8).hex()}.json"
-        json_filepath = os.path.join(upload_folder, json_filename)
+        json_filepath = os.path.join(upload_folder, secure_filename(json_filename))
+        # Для JSON сохраняем только метаданные, без base64 изображений, если они были в result_data
+        json_to_save = {k: v for k, v in result_data.items() if k != 'pages'}
+        json_to_save['pages'] = []
+        for page in result_data.get('pages', []):
+            page_copy = {pk: pv for pk, pv in page.items() if pk != 'images'}
+            if page.get('images'):
+                page_copy['images'] = [{'id': img.get('id'), 'path': img.get('path')} for img in page['images']]
+            json_to_save['pages'].append(page_copy)
+
         with open(json_filepath, "w", encoding="utf-8") as json_file:
-            json.dump(result_data, json_file, indent=2, ensure_ascii=False)
+            json.dump(json_to_save, json_file, indent=2, ensure_ascii=False)
 
         return markdown_filename, json_filename
-
     except Exception as e:
-        logger.error(f"Ошибка сохранения результатов в файлы: {str(e)}")
-        raise
+        logger.error(f"Ошибка сохранения результатов в файлы: {e}\n{traceback.format_exc()}")
+        raise ValueError("Ошибка при сохранении результатов OCR.")
 
+# --- Маршруты Flask ---
 @app.route('/')
 def index():
-    """Главная страница"""
+    """Главная страница."""
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
-def upload_document():
-    """
-    Загрузка и обработка документа
-    """
+def upload_document_route():
+    """Обрабатывает загрузку документа (файл или URL)."""
+    filepath_to_process = None
     try:
-        # Определение типа обработки
         processing_type = request.form.get('processing_type', 'file')
         
-        # Путь к файлу
-        filepath = None
-
         if processing_type == 'url':
-            # Обработка URL
             url = request.form.get('document')
             if not url:
                 return jsonify({"status": "error", "message": "URL не указан"}), 400
             
-            filepath = download_url_file(url)
-            if not filepath:  # Проверка, что filepath не None после download_url_file
-                return jsonify({"status": "error", "message": "Ошибка загрузки файла по URL"}), 500
-        
+            # Генерируем временное имя файла для скачанного содержимого
+            # Используем unquote для декодирования URL, чтобы получить имя файла, если оно есть
+            original_filename = os.path.basename(unquote(urlparse(url).path)) or "downloaded_file.tmp"
+            temp_filename = secure_filename(f"url_upload_{os.urandom(4).hex()}_{original_filename}")
+            filepath_to_process = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
+            download_file_from_url(url, filepath_to_process)
+
         elif processing_type == 'file':
-            # Обработка файла с диска
             if 'document' not in request.files:
                 return jsonify({"status": "error", "message": "Файл не загружен"}), 400
-
             file = request.files['document']
-            
             if file.filename == '':
                 return jsonify({"status": "error", "message": "Не выбран файл"}), 400
+            if not allowed_file(file.filename):
+                return jsonify({"status": "error", "message": "Недопустимый тип файла"}), 400
 
-            # Безопасное имя файла
             filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-        
+            filepath_to_process = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath_to_process)
         else:
             return jsonify({"status": "error", "message": "Неверный тип обработки"}), 400
 
+        if not filepath_to_process or not os.path.exists(filepath_to_process):
+             return jsonify({"status": "error", "message": "Ошибка подготовки файла для обработки"}), 500
+
         # Обработка документа
-        result = process_ocr_document(filepath)
+        # Параметр include_images извлекается из формы, по умолчанию True
+        include_images_str = request.form.get('include_images', 'true').lower()
+        include_images = include_images_str == 'true'
 
-        # Возврат результатов
-        return jsonify({
-            "status": "success",
-            "data": result
-        })
+        result = process_ocr_document(filepath_to_process, include_images=include_images)
 
+        # Относительные пути для изображений для фронтенда
+        for page in result.get('pages', []):
+            if page.get('images'):
+                for img_info in page['images']:
+                    if img_info.get('path'):
+                        img_info['url'] = f"/image/{secure_filename(os.path.basename(img_info['path']))}"
+
+
+        return jsonify({"status": "success", "data": result})
+
+    except ValueError as e: # Ожидаемые ошибки (URL, файл, API)
+        logger.warning(f"Ошибка обработки запроса: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400 if "URL" in str(e) or "файл" in str(e) else 500
     except Exception as e:
-        logger.error(f"Ошибка загрузки: {str(e)}")
-        return jsonify({
-            "status": "error", 
-            "message": str(e)
-        }), 500
+        logger.error(f"Непредвиденная ошибка при загрузке: {e}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": "Внутренняя ошибка сервера."}), 500
     finally:
-        # Очистка временных файлов
-        if filepath and os.path.exists(filepath):
+        # Очистка временных файлов (загруженных по URL или оригинальных файлов)
+        if filepath_to_process and os.path.exists(filepath_to_process):
             try:
-                os.unlink(filepath)
+                # Не удаляем файлы изображений, так как они нужны для отображения/скачивания
+                # Удаляем только исходный загруженный PDF/DOCX/etc. или временный файл по URL
+                # Файлы изображений и результаты (md, json) имеют уникальные имена и управляются отдельно
+                # (например, могут быть удалены по расписанию или при следующем запросе, если это необходимо)
+
+                # Проверяем, является ли файл результатом OCR (md, json, png), чтобы не удалить их случайно
+                # Это простая проверка, можно улучшить
+                if not (filepath_to_process.endswith(('.md', '.json')) or filepath_to_process.startswith(os.path.join(app.config['UPLOAD_FOLDER'], 'page_'))):
+                     os.unlink(filepath_to_process)
+                     logger.info(f"Удален временный файл: {filepath_to_process}")
             except Exception as cleanup_err:
-                logger.warning(f"Ошибка очистки файла: {cleanup_err}")
+                logger.warning(f"Ошибка очистки файла {filepath_to_process}: {cleanup_err}")
 
-@app.route('/download/markdown/<filename>')
-def download_markdown(filename):
-    """
-    Эндпоинт для скачивания Markdown файла
-    """
-    return send_file(
-        os.path.join(app.config['UPLOAD_FOLDER'], filename),
-        mimetype='text/markdown',
-        as_attachment=True,
-        download_name='document_ocr.md'
-    )
 
-@app.route('/download/json/<filename>')
-def download_json(filename):
-    """
-    Эндпоинт для скачивания JSON файла
-    """
-    return send_file(
-        os.path.join(app.config['UPLOAD_FOLDER'], filename),
-        mimetype='application/json',
-        as_attachment=True,
-        download_name='document_ocr.json'
-    )
+@app.route('/download/<filetype>/<filename>')
+def download_file_route(filetype, filename):
+    """Отдает на скачивание Markdown или JSON файл."""
+    if filetype not in ['markdown', 'json']:
+        return jsonify({"status": "error", "message": "Неверный тип файла для скачивания"}), 400
+
+    secure_fname = secure_filename(filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
+
+    if not os.path.exists(filepath):
+        logger.warning(f"Запрошенный для скачивания файл не найден: {filepath}")
+        return jsonify({"status": "error", "message": "Файл не найден"}), 404
+
+    mimetype = 'text/markdown' if filetype == 'markdown' else 'application/json'
+    download_name = f"document_ocr.{'md' if filetype == 'markdown' else 'json'}"
+
+    return send_file(filepath, mimetype=mimetype, as_attachment=True, download_name=download_name)
 
 @app.route('/image/<filename>')
-def serve_image(filename):
-    """
-    Эндпоинт для отдачи изображений
-    """
-    try:
-        return send_file(
-            os.path.join(app.config['UPLOAD_FOLDER'], filename), 
-            mimetype='image/png'
-        )
-    except Exception as e:
-        logger.error(f"Ошибка сервинга изображения: {str(e)}")
+def serve_image_route(filename):
+    """Отдает изображение."""
+    secure_fname = secure_filename(filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
+
+    if not os.path.exists(filepath) or not secure_fname.startswith('page_'): # Доп. проверка безопасности
+        logger.warning(f"Запрошенное изображение не найдено или доступ запрещен: {filepath}")
         return jsonify({"status": "error", "message": "Изображение не найдено"}), 404
 
+    # Определяем MIME-тип изображения (хотя обычно это png)
+    mime_type, _ = mimetypes.guess_type(filepath)
+    mime_type = mime_type or 'image/png' # По умолчанию png
+
+    return send_file(filepath, mimetype=mime_type)
+
+# --- API Эндпоинты (для потенциального GUI) ---
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    """Проверяет статус подключения к API Mistral (если не моковый режим)."""
+    if app.config['USE_MOCK_OCR']:
+        return jsonify({"status": "success", "message": "Работа в демонстрационном режиме."})
+
+    if not app.config['MISTRAL_API_KEY']:
+        return jsonify({"status": "error", "message": "API-ключ Mistral не настроен."}), 503
+
+    try:
+        client = Mistral(api_key=app.config['MISTRAL_API_KEY'])
+        # Пример простого запроса для проверки работоспособности, например, список моделей
+        # В данном случае, просто инициализация клиента считается достаточной для базовой проверки
+        # client.models.list() # Раскомментировать для реальной проверки API
+        return jsonify({"status": "success", "message": "API Mistral доступно (базовая проверка)."})
+    except Exception as e:
+        logger.error(f"Ошибка подключения к Mistral API: {e}")
+        return jsonify({"status": "error", "message": f"Ошибка подключения к Mistral API: {e}"}), 503
+
+
+def process_api_request(url, output_format, include_images):
+    """Общая логика для /api/markdown и /api/json эндпоинтов."""
+    if not url:
+        return jsonify({"status": "error", "message": "Параметр 'url' обязателен."}), 400
+
+    temp_dir = app.config['UPLOAD_FOLDER']
+    # Генерируем временное имя файла для скачанного содержимого
+    original_filename = os.path.basename(unquote(urlparse(url).path)) or "api_downloaded_file.tmp"
+    temp_filename = secure_filename(f"api_upload_{os.urandom(4).hex()}_{original_filename}")
+    filepath_to_process = os.path.join(temp_dir, temp_filename)
+
+    try:
+        download_file_from_url(url, filepath_to_process)
+        if not os.path.exists(filepath_to_process):
+             return jsonify({"status": "error", "message": "Ошибка загрузки файла по URL для API обработки"}), 500
+
+        result_data = process_ocr_document(filepath_to_process, include_images=include_images)
+
+        if output_format == 'markdown':
+            # Собираем полный Markdown из всех страниц
+            markdown_output_pages = []
+            for page in result_data.get('pages', []):
+                page_md = f"# Страница {page.get('index',0) + 1}\n\n{page.get('markdown', '')}"
+                if include_images and page.get('images'):
+                     for img_info in page['images']:
+                        # Для API возвращаем base64 изображения прямо в Markdown
+                        img_path = img_info.get('path')
+                        if app.config['USE_MOCK_OCR'] and img_info.get('image_base64') and not (img_path and os.path.exists(img_path)):
+                            image_data_b64 = img_info['image_base64']
+                            if not image_data_b64.startswith('data:image'):
+                                image_data_b64 = f"data:image/png;base64,{image_data_b64.split(',')[-1]}"
+                            page_md += f"\n\n![image]({image_data_b64})\n\n"
+                        elif img_path and os.path.exists(img_path):
+                            with open(img_path, "rb") as image_file:
+                                b64_encoded = base64.b64encode(image_file.read()).decode('utf-8')
+                            page_md += f"\n\n![image](data:image/png;base64,{b64_encoded})\n\n"
+                markdown_output_pages.append(page_md)
+            full_markdown = "\n\n---\n\n".join(markdown_output_pages)
+            return jsonify({"status": "success", "markdown": full_markdown, "source_document_url": result_data.get("document_url")})
+
+        elif output_format == 'json':
+            # Для JSON ответа, изображения могут быть представлены как пути или base64 строки
+            # В данном случае, result_data уже содержит пути, если include_images=True и файлы были сохранены
+            # Если GUI нужно base64, это можно добавить здесь дополнительно
+            api_json_result = {
+                "source_document_url": result_data.get("document_url"),
+                "pages": []
+            }
+            for page in result_data.get('pages', []):
+                api_page_data = {"index": page.get("index"), "markdown": page.get("markdown")}
+                if include_images and page.get('images'):
+                    api_page_data["images"] = []
+                    for img_info in page['images']:
+                        # Предоставляем URL для доступа к изображению через /image эндпоинт
+                        api_img_obj = {"id": img_info.get("id")}
+                        if img_info.get('path'):
+                             api_img_obj['url'] = f"/image/{secure_filename(os.path.basename(img_info['path']))}"
+                        # Опционально: добавить base64 если это нужно API клиенту
+                        # if img_info.get('path') and os.path.exists(img_info['path']):
+                        #     with open(img_info['path'], "rb") as image_file:
+                        #         b64_encoded = base64.b64encode(image_file.read()).decode('utf-8')
+                        #     api_img_obj['base64'] = f"data:image/png;base64,{b64_encoded}"
+                        api_page_data["images"].append(api_img_obj)
+                api_json_result["pages"].append(api_page_data)
+            return jsonify({"status": "success", "data": api_json_result})
+
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400 if "URL" in str(e) or "файл" in str(e) else 500
+    except Exception as e:
+        logger.error(f"API ошибка: {e}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": "Внутренняя ошибка сервера при обработке API запроса."}), 500
+    finally:
+        if filepath_to_process and os.path.exists(filepath_to_process):
+            try:
+                # Удаляем временный файл, скачанный для API
+                if not (filepath_to_process.endswith(('.md', '.json')) or filepath_to_process.startswith(os.path.join(app.config['UPLOAD_FOLDER'], 'page_'))):
+                    os.unlink(filepath_to_process)
+                    logger.info(f"Удален временный API файл: {filepath_to_process}")
+            except Exception as cleanup_err:
+                logger.warning(f"Ошибка очистки временного API файла {filepath_to_process}: {cleanup_err}")
+
+        # Дополнительно: очистка сохраненных md, json и png файлов от предыдущих API запросов, если они не нужны
+        # Это можно реализовать через удаление файлов старше определенного времени
+
+
+@app.route('/api/markdown', methods=['GET'])
+def api_get_markdown():
+    """Возвращает OCR результат в формате Markdown по URL документа."""
+    url = request.args.get('url')
+    # Параметр include_images, по умолчанию true
+    include_images_str = request.args.get('include_images', 'true').lower()
+    include_images = include_images_str == 'true'
+    return process_api_request(url, 'markdown', include_images)
+
+@app.route('/api/json', methods=['GET'])
+def api_get_json():
+    """Возвращает OCR результат в формате JSON по URL документа."""
+    url = request.args.get('url')
+    # Параметр include_images, по умолчанию true
+    include_images_str = request.args.get('include_images', 'true').lower()
+    include_images = include_images_str == 'true'
+    return process_api_request(url, 'json', include_images)
+
+
+# --- Запуск приложения ---
 if __name__ == '__main__':
-    # TODO: Вынести настройки в конфигурационный файл
+    # TODO: Вынести настройки в конфигурационный файл или переменные окружения для production
+    # Например, использовать Gunicorn + Nginx в production
     app.run(
-        host='0.0.0.0', 
-        port=int(os.environ.get('PORT', 5000)), 
+        host=os.environ.get('HOST', '0.0.0.0'),
+        port=int(os.environ.get('PORT', 5000)),
         debug=os.environ.get('DEBUG', 'False').lower() == 'true'
     )
