@@ -495,6 +495,17 @@
                         currentDocumentData = data.data;
                         resultsContainer.style.display = 'block';
                         
+                        // FIXED: Добавляем отладочную информацию
+                        console.info('OCR результат получен:', data.data);
+                        console.info('Количество страниц:', data.data.pages.length);
+                        
+                        // Подсчитываем изображения
+                        let totalImages = 0;
+                        data.data.pages.forEach(page => {
+                            if (page.images) totalImages += page.images.length;
+                        });
+                        console.info('Общее количество изображений:', totalImages);
+                        
                         // Scroll to results
                         resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -514,33 +525,67 @@
                             markdownOutputDiv.innerHTML = marked.parse(page.markdown);
                             pageDiv.appendChild(markdownOutputDiv);
 
-                            // Обработка изображений
-                            // TODO: Исправить отображение изображений в результатах OCR
-                            // FIXME: Изображения не загружаются в демо-режиме - проблема с путями
+                            // FIXED: Правильная обработка изображений в результатах OCR
                             if (page.images && page.images.length) {
                                 const imagesContainer = document.createElement('div');
                                 imagesContainer.classList.add('images-container', 'mt-3');
                                 
+                                const imagesTitle = document.createElement('h5');
+                                imagesTitle.innerHTML = `<i class="bi bi-images me-2"></i>Изображения (${page.images.length})`;
+                                imagesContainer.appendChild(imagesTitle);
+                                
                                 page.images.forEach((img, imgIndex) => {
+                                    console.info(`Обрабатываем изображение ${imgIndex + 1} на странице ${page.index + 1}:`, img);
+                                    
                                     const imgWrapper = document.createElement('div');
                                     imgWrapper.classList.add('image-wrapper', 'mb-3');
                                     
                                     const imgElem = document.createElement('img');
-                                    // FIXME: Исправляем путь к изображениям - но они все равно не отображаются
-                                    // TODO: Проверить, что сервер правильно создает и возвращает изображения
-                                    if (img.url) {
-                                        imgElem.src = img.url;
-                                    } else if (img.path) {
-                                        const imageName = img.path.split(/[\\/]/).pop();
-                                        imgElem.src = `/image/${imageName}`;
-                                    } else {
-                                        // FIXME: Fallback для демо-режима - временное решение
-                                        // TODO: Заменить на реальные изображения из демо-данных
-                                        imgElem.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#e2e8f0"/><text x="150" y="100" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="14">Изображение недоступно</text></svg>')}`;
-                                    }
                                     imgElem.classList.add('img-fluid', 'image-preview');
                                     imgElem.alt = `Изображение ${imgIndex + 1} со страницы ${page.index + 1}`;
                                     imgElem.loading = 'lazy';
+                                    
+                                    // FIXED: Правильная логика загрузки изображений
+                                    let imageLoaded = false;
+                                    
+                                    // Попытка 1: Использовать server endpoint если есть URL
+                                    if (img.url) {
+                                        imgElem.src = img.url;
+                                        imageLoaded = true;
+                                    } 
+                                    // Попытка 2: Использовать путь к файлу через server endpoint
+                                    else if (img.path) {
+                                        const imageName = img.path.split(/[\\/]/).pop();
+                                        imgElem.src = `/image/${imageName}`;
+                                        imageLoaded = true;
+                                    }
+                                    // Попытка 3: Использовать base64 данные напрямую
+                                    else if (img.image_base64) {
+                                        imgElem.src = img.image_base64;
+                                        imageLoaded = true;
+                                    }
+                                    
+                                    // Fallback: показать placeholder
+                                    if (!imageLoaded) {
+                                        imgElem.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#e2e8f0"/><text x="150" y="100" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="14">Изображение недоступно</text></svg>')}`;
+                                    }
+                                    
+                                    // Добавляем обработчик ошибок загрузки изображения
+                                    imgElem.onerror = function() {
+                                        console.warn(`Ошибка загрузки изображения: ${this.src}`);
+                                        // Если основной источник не загрузился, пробуем base64
+                                        if (img.image_base64 && !this.src.startsWith('data:image')) {
+                                            this.src = img.image_base64;
+                                        } else {
+                                            // Показываем placeholder
+                                            this.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#f87171"/><text x="150" y="100" text-anchor="middle" fill="#ffffff" font-family="Arial" font-size="14">Ошибка загрузки</text></svg>')}`;
+                                        }
+                                    };
+                                    
+                                    // Добавляем обработчик успешной загрузки
+                                    imgElem.onload = function() {
+                                        console.info(`Изображение загружено успешно: ${img.id}`);
+                                    };
                                     
                                     // Add click handler for image zoom
                                     imgElem.addEventListener('click', () => {

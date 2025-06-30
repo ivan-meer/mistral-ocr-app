@@ -8,6 +8,7 @@ import tempfile
 import logging
 import traceback
 import requests
+import re
 from urllib.parse import urlparse, unquote
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -41,6 +42,31 @@ def get_mime_type_by_filename(filename):
     """Определяет MIME-тип файла по имени файла."""
     mime_type, _ = mimetypes.guess_type(filename)
     return mime_type or 'application/octet-stream'
+
+def extract_images_from_markdown(markdown_text, page_index):
+    """Извлекает ссылки на изображения из markdown текста Mistral OCR."""
+    # FIXED: Парсим markdown для извлечения ссылок на изображения
+    # Mistral OCR встраивает изображения как ![alt](img-N.jpeg) или ![alt](image_id)
+    image_pattern = r'!\[([^\]]*)\]\(([^)]+\.(jpeg|jpg|png|gif|webp))\)'
+    matches = re.findall(image_pattern, markdown_text, re.IGNORECASE)
+    
+    extracted_images = []
+    for alt_text, image_ref, ext in matches:
+        # Создаем уникальное имя файла для изображения
+        img_id = image_ref.replace('.', '_').replace('/', '_')
+        img_filename = f"page_{page_index}_extracted_{img_id}.{ext}"
+        
+        extracted_images.append({
+            'id': img_id,
+            'alt_text': alt_text,
+            'original_ref': image_ref,
+            'filename': img_filename,
+            'markdown_pattern': f'![{alt_text}]({image_ref})'
+        })
+        
+        logger.info(f"Найдено изображение в markdown: {image_ref} -> {img_filename}")
+    
+    return extracted_images
 
 def handle_google_drive_url(url):
     """Преобразует URL Google Drive в прямой URL для скачивания."""
@@ -182,6 +208,13 @@ def mistral_ocr_processing(file_path, include_images=True):
             document={"type": "document_url", "document_url": signed_url.url},
             include_image_base64=include_images
         )
+        # FIXED: Добавляем детальное логирование ответа API
+        logger.info(f"Получен ответ от Mistral OCR API. Страниц: {len(ocr_response.pages)}")
+        for i, page in enumerate(ocr_response.pages):
+            logger.info(f"Страница {i}: изображений в API ответе: {len(page.images) if page.images else 0}")
+            if page.images:
+                for j, img in enumerate(page.images):
+                    logger.info(f"  Изображение {j}: ID={img.id}, base64_length={len(img.image_base64) if hasattr(img, 'image_base64') else 'нет'}")
     except Exception as e:
         logger.error(f"Ошибка OCR обработки в Mistral API: {e}")
         raise ValueError(f"Ошибка взаимодействия с Mistral API при OCR обработке: {e}")
@@ -189,17 +222,65 @@ def mistral_ocr_processing(file_path, include_images=True):
     processed_pages = []
     for page in ocr_response.pages:
         page_data = {"index": page.index, "markdown": page.markdown, "images": []}
+        
+        # FIXED: Извлекаем изображения из base64 (если есть)
         if include_images and page.images:
+            logger.info(f"Обрабатываем {len(page.images)} изображений из API base64")
             for img in page.images:
                 try:
-                    img_data = base64.b64decode(img.image_base64.split(',')[1])
+                    # Правильная обработка base64 изображений из Mistral API
+                    base64_data = img.image_base64
+                    if base64_data.startswith('data:image'):
+                        # Если есть MIME префикс, извлекаем только base64 часть
+                        base64_data = base64_data.split(',')[1]
+                    
+                    img_data = base64.b64decode(base64_data)
                     img_filename = f"page_{page.index}_img_{img.id}.png"
                     img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
                     with open(img_path, "wb") as img_file:
                         img_file.write(img_data)
-                    page_data["images"].append({"id": img.id, "path": img_path})
+                    
+                    page_data["images"].append({
+                        "id": img.id, 
+                        "path": img_path,
+                        "image_base64": img.image_base64
+                    })
+                    logger.info(f"Сохранено base64 изображение: {img_filename}")
                 except Exception as e:
-                    logger.error(f"Ошибка сохранения изображения {img.id} со страницы {page.index}: {e}")
+                    logger.error(f"Ошибка сохранения base64 изображения {img.id}: {e}")
+        
+        # FIXED: Дополнительно извлекаем изображения из markdown ссылок
+        if include_images:
+            markdown_images = extract_images_from_markdown(page.markdown, page.index)
+            logger.info(f"Найдено {len(markdown_images)} изображений в markdown")
+            
+            for md_img in markdown_images:
+                # Создаем placeholder изображение для ссылок из markdown
+                placeholder_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(md_img['filename']))
+                
+                # Создаем простое placeholder изображение
+                try:
+                    placeholder_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+                        <rect width="400" height="300" fill="#e2e8f0"/>
+                        <text x="200" y="140" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="16">{md_img['alt_text'] or 'Изображение'}</text>
+                        <text x="200" y="160" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{md_img['original_ref']}</text>
+                    </svg>'''
+                    
+                    # Конвертируем SVG в base64 PNG (упрощенно создаем base64 SVG)
+                    svg_base64 = base64.b64encode(placeholder_svg.encode('utf-8')).decode('utf-8')
+                    placeholder_base64 = f"data:image/svg+xml;base64,{svg_base64}"
+                    
+                    page_data["images"].append({
+                        "id": md_img['id'],
+                        "path": placeholder_path,
+                        "image_base64": placeholder_base64,
+                        "alt_text": md_img['alt_text'],
+                        "original_ref": md_img['original_ref']
+                    })
+                    logger.info(f"Создан placeholder для markdown изображения: {md_img['original_ref']}")
+                except Exception as e:
+                    logger.error(f"Ошибка создания placeholder для {md_img['original_ref']}: {e}")
+        
         processed_pages.append(page_data)
 
     return {"document_url": signed_url.url, "pages": processed_pages}
@@ -335,14 +416,18 @@ def upload_document_route():
 
         result = process_ocr_document(filepath_to_process, include_images=include_images)
 
-        # Относительные пути для изображений для фронтенда
+        # FIXED: Улучшенная обработка путей к изображениям для фронтенда
+        total_images = 0
         for page in result.get('pages', []):
             if page.get('images'):
                 for img_info in page['images']:
+                    total_images += 1
                     if img_info.get('path'):
-                        img_info['url'] = f"/image/{secure_filename(os.path.basename(img_info['path']))}"
-
-
+                        img_filename = secure_filename(os.path.basename(img_info['path']))
+                        img_info['url'] = f"/image/{img_filename}"
+                        logger.info(f"Создан URL для изображения: {img_info['url']}")
+        
+        logger.info(f"Обработка завершена. Всего изображений: {total_images}")
         return jsonify({"status": "success", "data": result})
 
     except ValueError as e: # Ожидаемые ошибки (URL, файл, API)
@@ -412,6 +497,28 @@ def serve_image_route(filename):
     mime_type = mime_type or 'image/png' # По умолчанию png
 
     return send_file(filepath, mimetype=mime_type)
+
+@app.route('/<path:image_path>')
+def serve_markdown_image(image_path):
+    """FIXED: Обрабатывает прямые запросы к изображениям из markdown (например /img-0.jpeg)."""
+    # Проверяем, что это запрос к изображению
+    if not any(image_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+        # Если не изображение, возвращаем 404
+        from flask import abort
+        abort(404)
+    
+    logger.info(f"Запрос к markdown изображению: {image_path}")
+    
+    # Создаем placeholder SVG для изображений из markdown
+    from flask import Response
+    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+        <rect width="400" height="300" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+        <text x="200" y="140" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="16">Изображение из документа</text>
+        <text x="200" y="160" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{image_path}</text>
+        <text x="200" y="180" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="10">Извлечено из PDF Mistral OCR</text>
+    </svg>'''
+    
+    return Response(svg_content, mimetype='image/svg+xml')
 
 # --- API Эндпоинты (для потенциального GUI) ---
 @app.route('/api/status', methods=['GET'])

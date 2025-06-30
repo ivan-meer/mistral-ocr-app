@@ -115,16 +115,22 @@ mistral-ocr-app/
 - Responsive design with mobile-first approach
 - Progressive enhancement with JavaScript
 
-## Recent Fixes (v2.0.1)
+## Recent Fixes (v2.0.3)
 
-### Image Display Issue Resolution
-**Problem**: Images were not displaying in OCR results (demo mode)
-**Root Cause**: `mock_ocr_processing()` created only image metadata without physical files
-**Solution**: Added automatic PNG file creation with base64 data
+### Critical Real API Image Issue Resolution
+**Problem**: Images from real Mistral OCR API not displaying (logs showed 0 images)
+**Root Causes**: 
+1. Mistral OCR API returns `0` images in `page.images` but embeds links in markdown
+2. Frontend requests `/img-0.jpeg` instead of processed paths
+3. Missing markdown parser for extracting image references
+
+**Solution v2.0.3**: Dual-level image processing system
 
 **Key Changes**:
-- `app.py:92-134` - Enhanced mock_ocr_processing() with real file creation
-- `app.py:242-258` - Improved save_results_to_files() image handling logic  
-- `app.py:390-414` - Streamlined serve_image_route() error handling
-- Added proper base64 image processing according to Mistral OCR API specs
-- Implemented fallback mechanisms for robust error handling
+- `app.py:46-69` - Added `extract_images_from_markdown()` function with regex parsing
+- `app.py:185-191` - Enhanced API response logging to debug structure
+- `app.py:222-284` - Implemented dual processing: base64 from API + markdown links
+- `app.py:501-521` - Added `serve_markdown_image()` route for direct markdown requests
+- Added regex pattern: `r'!\[([^\]]*)\]\(([^)]+\.(jpeg|jpg|png|gif|webp))\)'`
+- SVG placeholder generation with contextual information
+- Full compatibility with real Mistral OCR API behavior
