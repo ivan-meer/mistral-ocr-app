@@ -1,96 +1,428 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mistral OCR Документов</title>
+    <title>Mistral OCR - PDF в Markdown/JSON Конвертер</title>
+    <meta name="description" content="Веб-приложение для извлечения текста и изображений из PDF-документов с использованием Mistral OCR API">
+    <meta name="keywords" content="OCR, PDF, Markdown, JSON, Mistral AI, конвертер документов">
+    
+    <!-- Preload critical fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Enhanced CSS -->
     <link rel="stylesheet" href="../static/css/main.css">
-    <!-- Marked.js via CDN -->
+    
+    <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- highlight.js via CDN -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
-    <div class="container-fluid py-5">
+    <!-- App Header -->
+    <header class="app-header">
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-center flex-grow-1">
+                    <h1 class="app-title">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        Mistral OCR
+                    </h1>
+                    <p class="app-subtitle mb-0">PDF в Markdown/JSON Конвертер</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <!-- TODO: Add theme switcher -->
+                    <!-- <button class="btn btn-outline-light btn-sm" id="theme-toggle" title="Переключить тему">
+                        <i class="bi bi-moon-fill"></i>
+                    </button> -->
+                    <!-- TODO: Add settings button -->
+                    <!-- <a href="/settings" class="btn btn-outline-light btn-sm" title="Настройки">
+                        <i class="bi bi-gear-fill"></i>
+                    </a> -->
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container-fluid">
         <div class="row justify-content-center">
             <div class="col-lg-8">
-                    <div class="progress mb-3 hidden" id="upload-progress">
-                        <div class="progress-bar" role="progressbar" id="progress-bar-inner" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                <div class="upload-container">
+                    <!-- Progress Bar -->
+                    <div class="progress mb-4 hidden" id="upload-progress">
+                        <div class="progress-bar progress-bar-animated" role="progressbar" id="progress-bar-inner" 
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
 
+                    <!-- Upload Tabs -->
                     <ul class="nav nav-tabs mb-4" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link active" id="file-tab" data-bs-toggle="tab" href="#file-upload" role="tab">Файл</a>
+                            <button class="nav-link active" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-upload" 
+                                    type="button" role="tab" aria-controls="file-upload" aria-selected="true">
+                                <i class="bi bi-file-earmark-arrow-up me-2"></i>Файл
+                            </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link" id="url-tab" data-bs-toggle="tab" href="#url-upload" role="tab">URL</a>
+                            <button class="nav-link" id="url-tab" data-bs-toggle="tab" data-bs-target="#url-upload" 
+                                    type="button" role="tab" aria-controls="url-upload" aria-selected="false">
+                                <i class="bi bi-link-45deg me-2"></i>URL
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" 
+                                    type="button" role="tab" aria-controls="settings" aria-selected="false">
+                                <i class="bi bi-gear-fill me-2"></i>Настройки
+                            </button>
                         </li>
                     </ul>
 
+                    <!-- Tab Content -->
                     <div class="tab-content">
-                        <div class="tab-pane fade show active" id="file-upload">
-                            <p class="text-muted">Загрузите файл документа для распознавания текста.</p>
-                            <form id="file-upload-form">
+                        <!-- File Upload Tab -->
+                        <div class="tab-pane fade show active" id="file-upload" role="tabpanel" aria-labelledby="file-tab">
+                            <div class="mb-3">
+                                <p class="text-muted">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Загрузите файл документа для распознавания текста. Поддерживаются форматы: PDF, PNG, JPG, JPEG, DOCX.
+                                </p>
+                            </div>
+                            <form id="file-upload-form" class="needs-validation" novalidate>
                                 <input type="hidden" name="processing_type" value="file">
-                                <div class="mb-3">
-                                    <label for="document-file" class="form-label">Выберите файл документа</label>
+                                <div class="form-group">
+                                    <label for="document-file" class="form-label required">Выберите файл документа</label>
                                     <input class="form-control" type="file" id="document-file" name="document"
-                                           accept=".pdf,.png,.jpg,.jpeg,.docx" title="Выберите файл документа" required>
+                                           accept=".pdf,.png,.jpg,.jpeg,.docx" required>
+                                    <div class="form-text">Максимальный размер файла: 50 МБ</div>
+                                    <div class="invalid-feedback">Пожалуйста, выберите файл для загрузки.</div>
+                                </div>
+                                
+                                <!-- Advanced Options -->
+                                <div class="form-group">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="include-images-file" 
+                                               name="include_images" checked>
+                                        <label class="form-check-label" for="include-images-file">
+                                            Извлекать изображения из документа
+                                        </label>
                                     </div>
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <span id="file-submit-text">Обработать документ</span>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary btn-lg w-100">
+                                    <span id="file-submit-text">
+                                        <i class="bi bi-play-fill me-2"></i>Обработать документ
+                                    </span>
                                     <div id="file-loading-spinner" class="spinner-border spinner-border-sm ms-2 hidden" role="status">
-                                        <span class="visually-hidden">Загрузка...</span>
+                                        <span class="visually-hidden">Обработка...</span>
                                     </div>
                                 </button>
                             </form>
                         </div>
 
-                        <div class="tab-pane fade" id="url-upload">
-                            <p class="text-muted">Укажите URL документа для распознавания текста.</p>
-                            <form id="url-upload-form">
+                        <!-- URL Upload Tab -->
+                        <div class="tab-pane fade" id="url-upload" role="tabpanel" aria-labelledby="url-tab">
+                            <div class="mb-3">
+                                <p class="text-muted">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Укажите URL документа для распознавания текста. Поддерживаются прямые ссылки и Google Drive.
+                                </p>
+                            </div>
+                            <form id="url-upload-form" class="needs-validation" novalidate>
                                 <input type="hidden" name="processing_type" value="url">
-                                <div class="mb-3">
-                                    <input class="form-control" type="url" name="document"
-                                           placeholder="Введите URL документа" required>
+                                <div class="form-group">
+                                    <label for="document-url" class="form-label required">URL документа</label>
+                                    <input class="form-control" type="url" id="document-url" name="document"
+                                           placeholder="https://example.com/document.pdf" required>
+                                    <div class="form-text">Введите прямую ссылку на документ или ссылку Google Drive</div>
+                                    <div class="invalid-feedback">Пожалуйста, введите корректный URL.</div>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <span id="url-submit-text">Обработать документ</span>
-                                    <div id="url-loading-spinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display:none;">
-                                        <span class="visually-hidden">Загрузка...</span>
+                                
+                                <!-- Advanced Options -->
+                                <div class="form-group">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="include-images-url" 
+                                               name="include_images" checked>
+                                        <label class="form-check-label" for="include-images-url">
+                                            Извлекать изображения из документа
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary btn-lg w-100">
+                                    <span id="url-submit-text">
+                                        <i class="bi bi-play-fill me-2"></i>Обработать документ
+                                    </span>
+                                    <div id="url-loading-spinner" class="spinner-border spinner-border-sm ms-2 hidden" role="status">
+                                        <span class="visually-hidden">Обработка...</span>
                                     </div>
                                 </button>
                             </form>
                         </div>
-                    <div id="results-container" class="mt-4">
-                    <div id="error-message" class="alert alert-danger mt-3" style="display:none;"></div>
 
-                    <div id="results-container" class="mt-4">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h3 class="mb-0">Результаты обработки</h3>
-                                <div class="download-options">
-                                    <a id="download-markdown" class="btn btn-sm btn-outline-light me-2" 
-                                       href="#" download="document_ocr.md">
-                                        <i class="bi bi-file-earmark-text"></i> Markdown
-                                    </a>
-                                    <a id="download-json" class="btn btn-sm btn-outline-light" 
-                                       href="#" download="document_ocr.json">
-                                        <i class="bi bi-file-earmark-code"></i> JSON
-                                    </a>
+                        <!-- Settings Tab -->
+                        <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+                            <div class="mb-3">
+                                <p class="text-muted">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Настройте параметры приложения для оптимальной работы с вашими документами.
+                                </p>
+                            </div>
+
+                            <!-- Settings Categories -->
+                            <div class="accordion" id="settingsAccordion">
+                                <!-- API Settings -->
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="apiSettingsHeader">
+                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" 
+                                                data-bs-target="#apiSettings" aria-expanded="true" aria-controls="apiSettings">
+                                            <i class="bi bi-cloud-arrow-up me-2"></i>
+                                            API и Обработка
+                                        </button>
+                                    </h2>
+                                    <div id="apiSettings" class="accordion-collapse collapse show" 
+                                         aria-labelledby="apiSettingsHeader" data-bs-parent="#settingsAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="mistral-api-key" class="form-label">
+                                                            <i class="bi bi-key me-1"></i>Mistral API Key
+                                                        </label>
+                                                        <input type="password" class="form-control" id="mistral-api-key" 
+                                                               placeholder="Введите ваш API ключ">
+                                                        <div class="form-text">Оставьте пустым для демо-режима</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="max-file-size" class="form-label">
+                                                            <i class="bi bi-file-earmark me-1"></i>Максимальный размер файла (МБ)
+                                                        </label>
+                                                        <input type="number" class="form-control" id="max-file-size" 
+                                                               value="50" min="1" max="100">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mt-3">
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="use-mock-ocr" checked>
+                                                        <label class="form-check-label" for="use-mock-ocr">
+                                                            Демо-режим OCR
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="auto-cleanup" checked>
+                                                        <label class="form-check-label" for="auto-cleanup">
+                                                            Автоочистка временных файлов
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- UI Settings -->
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="uiSettingsHeader">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                                data-bs-target="#uiSettings" aria-expanded="false" aria-controls="uiSettings">
+                                            <i class="bi bi-palette me-2"></i>
+                                            Интерфейс и Отображение
+                                        </button>
+                                    </h2>
+                                    <div id="uiSettings" class="accordion-collapse collapse" 
+                                         aria-labelledby="uiSettingsHeader" data-bs-parent="#settingsAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="theme-select" class="form-label">
+                                                            <i class="bi bi-moon me-1"></i>Тема оформления
+                                                        </label>
+                                                        <select class="form-select" id="theme-select">
+                                                            <option value="dark" selected>Темная</option>
+                                                            <option value="light">Светлая</option>
+                                                            <option value="auto">Автоматически</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="font-size-select" class="form-label">
+                                                            <i class="bi bi-fonts me-1"></i>Размер шрифта
+                                                        </label>
+                                                        <select class="form-select" id="font-size-select">
+                                                            <option value="small">Маленький</option>
+                                                            <option value="medium" selected>Средний</option>
+                                                            <option value="large">Большой</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mt-3">
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="animations-enabled" checked>
+                                                        <label class="form-check-label" for="animations-enabled">
+                                                            Анимации интерфейса
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="syntax-highlighting" checked>
+                                                        <label class="form-check-label" for="syntax-highlighting">
+                                                            Подсветка синтаксиса
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Export Settings -->
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="exportSettingsHeader">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                                data-bs-target="#exportSettings" aria-expanded="false" aria-controls="exportSettings">
+                                            <i class="bi bi-download me-2"></i>
+                                            Экспорт и Сохранение
+                                        </button>
+                                    </h2>
+                                    <div id="exportSettings" class="accordion-collapse collapse" 
+                                         aria-labelledby="exportSettingsHeader" data-bs-parent="#settingsAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="default-format" class="form-label">
+                                                            <i class="bi bi-file-earmark me-1"></i>Формат по умолчанию
+                                                        </label>
+                                                        <select class="form-select" id="default-format">
+                                                            <option value="markdown" selected>Markdown</option>
+                                                            <option value="json">JSON</option>
+                                                            <option value="both">Оба формата</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-group">
+                                                        <label for="image-quality" class="form-label">
+                                                            <i class="bi bi-image me-1"></i>Качество изображений
+                                                        </label>
+                                                        <select class="form-select" id="image-quality">
+                                                            <option value="low">Низкое</option>
+                                                            <option value="medium">Среднее</option>
+                                                            <option value="high" selected>Высокое</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mt-3">
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="include-metadata" checked>
+                                                        <label class="form-check-label" for="include-metadata">
+                                                            Включать метаданные
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="preserve-formatting" checked>
+                                                        <label class="form-check-label" for="preserve-formatting">
+                                                            Сохранять форматирование
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="card-body">
-                                <div id="pages-container"></div>
+
+                            <!-- Settings Actions -->
+                            <div class="mt-4 d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-primary" id="save-settings">
+                                    <i class="bi bi-check-lg me-2"></i>Сохранить настройки
+                                </button>
+                                <button type="button" class="btn btn-outline-light" id="reset-settings">
+                                    <i class="bi bi-arrow-clockwise me-2"></i>Сбросить
+                                </button>
+                                <button type="button" class="btn btn-outline-light" id="export-settings">
+                                    <i class="bi bi-download me-2"></i>Экспорт
+                                </button>
+                                <button type="button" class="btn btn-outline-light" id="import-settings">
+                                    <i class="bi bi-upload me-2"></i>Импорт
+                                </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div id="error-message" class="alert alert-danger mt-4" style="display:none;" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span id="error-text"></span>
+                </div>
+
+                <!-- Results Container -->
+                <div id="results-container" class="mt-4" style="display:none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                            <h3 class="mb-0">
+                                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                Результаты обработки
+                            </h3>
+                            <div class="download-options mt-2 mt-md-0">
+                                <a id="download-markdown" class="btn btn-outline-light btn-sm" 
+                                   href="#" download="document_ocr.md">
+                                    <i class="bi bi-file-earmark-text me-1"></i>Markdown
+                                </a>
+                                <a id="download-json" class="btn btn-outline-light btn-sm" 
+                                   href="#" download="document_ocr.json">
+                                    <i class="bi bi-file-earmark-code me-1"></i>JSON
+                                </a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="pages-container"></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-4 text-center text-muted">
+        <div class="container-fluid">
+            <p class="mb-1">
+                <small>
+                    <img src="../static/assets/mistral-logo.png" alt="Mistral AI" class="mistral-logo">
+                    Powered by <strong>Mistral AI</strong> | 
+                    <a href="https://github.com/ivan-meer/mistral-ocr-app" target="_blank" class="text-decoration-none">
+                        <i class="bi bi-github me-1"></i>GitHub
+                    </a>
+                </small>
+            </p>
+        </div>
+    </footer>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -114,6 +446,7 @@
             const submitText = document.getElementById(`${processingType}-submit-text`);
             const loadingSpinner = document.getElementById(`${processingType}-loading-spinner`);
             const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
             const resultsContainer = document.getElementById('results-container');
             const pagesContainer = document.getElementById('pages-container');
             const uploadProgress = document.getElementById('upload-progress');
@@ -122,11 +455,12 @@
             errorMessage.style.display = 'none';
             resultsContainer.style.display = 'none';
             pagesContainer.innerHTML = '';
-            uploadProgress.style.display = 'none';
+            uploadProgress.classList.add('hidden');
             
             // Show loading
-            submitText.textContent = 'Обработка...';
-            loadingSpinner.style.display = 'inline-block';
+            const originalText = submitText.innerHTML;
+            submitText.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Обработка...';
+            loadingSpinner.classList.remove('hidden');
             
             const formData = new FormData(form);
 
@@ -144,79 +478,418 @@
 
             // Обработчик успешной загрузки
             xhr.onload = function() {
-                // Парсим ответ
-                const data = JSON.parse(xhr.responseText);
+                try {
+                    // Парсим ответ
+                    const data = JSON.parse(xhr.responseText);
 
-                // Скрываем индикаторы загрузки
-                submitText.textContent = 'Обработать документ';
-                loadingSpinner.style.display = 'none';
-                updateProgress(100);
+                    // Скрываем индикаторы загрузки
+                    submitText.innerHTML = originalText;
+                    loadingSpinner.classList.add('hidden');
+                    updateProgress(100);
+                    
+                    setTimeout(() => {
+                        uploadProgress.classList.add('hidden');
+                    }, 1000);
 
-                if (data.status === 'success') {
-                    currentDocumentData = data.data;
-                    resultsContainer.style.display = 'block';
-
-                    pagesContainer.innerHTML = '';
-                    data.data.pages.forEach(page => {
-                        const pageDiv = document.createElement('div');
-                        pageDiv.classList.add('page-preview');
+                    if (data.status === 'success') {
+                        currentDocumentData = data.data;
+                        resultsContainer.style.display = 'block';
                         
-                        const pageTitle = document.createElement('h4');
-                        pageTitle.textContent = `Страница ${page.index + 1}`;
-                        pageDiv.appendChild(pageTitle);
+                        // Scroll to results
+                        resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-                        // Используем Marked.js для рендеринга Markdown
-                        const markdownOutputDiv = document.createElement('div');
-                        markdownOutputDiv.classList.add('markdown-rendered-content');
-                        markdownOutputDiv.innerHTML = marked.parse(page.markdown); // Используем marked.parse()
-                        pageDiv.appendChild(markdownOutputDiv);
+                        pagesContainer.innerHTML = '';
+                        data.data.pages.forEach((page, index) => {
+                            const pageDiv = document.createElement('div');
+                            pageDiv.classList.add('page-preview');
+                            pageDiv.style.animationDelay = `${index * 0.1}s`;
+                            
+                            const pageTitle = document.createElement('h4');
+                            pageTitle.innerHTML = `<i class="bi bi-file-earmark-text me-2"></i>Страница ${page.index + 1}`;
+                            pageDiv.appendChild(pageTitle);
 
-                        if (page.images && page.images.length) {
-                            page.images.forEach(img => {
-                                const imgElem = document.createElement('img');
-                                // Обеспечиваем корректный путь к изображению, если он содержит обратные слеши
-                                const imageName = img.path.split(/[\\/]/).pop();
-                                imgElem.src = `/image/${imageName}`;
-                                imgElem.classList.add('img-fluid', 'image-preview', 'my-2'); // Добавлен отступ для изображений
-                                // Вставляем изображения после markdown контента страницы
-                                markdownOutputDiv.appendChild(imgElem);
-                            });
-                        }
+                            // Используем Marked.js для рендеринга Markdown
+                            const markdownOutputDiv = document.createElement('div');
+                            markdownOutputDiv.classList.add('markdown-rendered-content');
+                            markdownOutputDiv.innerHTML = marked.parse(page.markdown);
+                            pageDiv.appendChild(markdownOutputDiv);
 
-                        pagesContainer.appendChild(pageDiv);
-                    });
+                            // Обработка изображений
+                            if (page.images && page.images.length) {
+                                const imagesContainer = document.createElement('div');
+                                imagesContainer.classList.add('images-container', 'mt-3');
+                                
+                                page.images.forEach((img, imgIndex) => {
+                                    const imgWrapper = document.createElement('div');
+                                    imgWrapper.classList.add('image-wrapper', 'mb-3');
+                                    
+                                    const imgElem = document.createElement('img');
+                                    // Исправляем путь к изображениям
+                                    if (img.url) {
+                                        imgElem.src = img.url;
+                                    } else if (img.path) {
+                                        const imageName = img.path.split(/[\\/]/).pop();
+                                        imgElem.src = `/image/${imageName}`;
+                                    } else {
+                                        // Fallback для демо-режима
+                                        imgElem.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#e2e8f0"/><text x="150" y="100" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="14">Изображение недоступно</text></svg>')}`;
+                                    }
+                                    imgElem.classList.add('img-fluid', 'image-preview');
+                                    imgElem.alt = `Изображение ${imgIndex + 1} со страницы ${page.index + 1}`;
+                                    imgElem.loading = 'lazy';
+                                    
+                                    // Add click handler for image zoom
+                                    imgElem.addEventListener('click', () => {
+                                        openImageModal(imgElem.src, imgElem.alt);
+                                    });
+                                    
+                                    imgWrapper.appendChild(imgElem);
+                                    imagesContainer.appendChild(imgWrapper);
+                                });
+                                
+                                pageDiv.appendChild(imagesContainer);
+                            }
 
-                    // Обновление ссылок на скачивание
-                    document.getElementById('download-markdown').href = `/download/markdown/${data.data.markdown_file}`;
-                    document.getElementById('download-json').href = `/download/json/${data.data.json_file}`;
+                            pagesContainer.appendChild(pageDiv);
+                        });
 
-                    // Инициализация подсветки синтаксиса
-                    document.querySelectorAll('.markdown-rendered-content pre code').forEach((block) => {
-                        hljs.highlightElement(block);
-                    });
+                        // Обновление ссылок на скачивание
+                        document.getElementById('download-markdown').href = `/download/markdown/${data.data.markdown_file}`;
+                        document.getElementById('download-json').href = `/download/json/${data.data.json_file}`;
 
-                } else {
-                    errorMessage.textContent = data.message;
+                        // Инициализация подсветки синтаксиса
+                        document.querySelectorAll('.markdown-rendered-content pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+
+                    } else {
+                        errorText.textContent = data.message || 'Произошла ошибка при обработке документа';
+                        errorMessage.style.display = 'block';
+                        errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } catch (e) {
+                    console.error('Error parsing response:', e);
+                    submitText.innerHTML = originalText;
+                    loadingSpinner.classList.add('hidden');
+                    errorText.textContent = 'Ошибка обработки ответа сервера';
                     errorMessage.style.display = 'block';
                 }
             };
 
             // Обработчик ошибок
             xhr.onerror = function() {
-                submitText.textContent = 'Обработать документ';
-                loadingSpinner.style.display = 'none';
-
-                errorMessage.textContent = 'Произошла ошибка при загрузке';
+                submitText.innerHTML = originalText;
+                loadingSpinner.classList.add('hidden');
+                uploadProgress.classList.add('hidden');
+                
+                errorText.textContent = 'Произошла ошибка при загрузке. Проверьте подключение к интернету.';
                 errorMessage.style.display = 'block';
+                errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
             };
 
             // Отправляем запрос
             xhr.send(formData);
         }
 
-        // Добавляем обработчики событий
-        document.getElementById('file-upload-form').addEventListener('submit', (e) => processDocument(e.target, e));
-        document.getElementById('url-upload-form').addEventListener('submit', (e) => processDocument(e.target, e));
+        // Function to open image in modal (placeholder for future implementation)
+        function openImageModal(src, alt) {
+            // TODO: Implement image modal/lightbox
+            window.open(src, '_blank');
+        }
+
+        // Form validation
+        function validateForm(form) {
+            const inputs = form.querySelectorAll('input[required]');
+            let isValid = true;
+            
+            inputs.forEach(input => {
+                if (!input.value.trim()) {
+                    input.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                    input.classList.add('is-valid');
+                }
+            });
+            
+            return isValid;
+        }
+
+        // Enhanced form submission with validation
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            
+            if (validateForm(form)) {
+                processDocument(form, event);
+            }
+        }
+
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add form event listeners
+            document.getElementById('file-upload-form').addEventListener('submit', handleFormSubmit);
+            document.getElementById('url-upload-form').addEventListener('submit', handleFormSubmit);
+            
+            // Add input validation listeners
+            document.querySelectorAll('input[required]').forEach(input => {
+                input.addEventListener('blur', () => validateForm(input.form));
+                input.addEventListener('input', () => {
+                    if (input.classList.contains('is-invalid')) {
+                        validateForm(input.form);
+                    }
+                });
+            });
+            
+            // File input change handler
+            document.getElementById('document-file').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                const invalidFeedback = e.target.parentElement.querySelector('.invalid-feedback');
+                
+                if (file) {
+                    const maxSize = 50 * 1024 * 1024; // 50MB
+                    if (file.size > maxSize) {
+                        e.target.setCustomValidity('Файл слишком большой. Максимальный размер: 50 МБ');
+                        e.target.classList.add('is-invalid');
+                        e.target.classList.remove('is-valid');
+                        if (invalidFeedback) {
+                            invalidFeedback.textContent = 'Файл слишком большой. Максимальный размер: 50 МБ';
+                            invalidFeedback.style.display = 'block';
+                        }
+                    } else {
+                        e.target.setCustomValidity('');
+                        e.target.classList.remove('is-invalid');
+                        e.target.classList.add('is-valid');
+                        if (invalidFeedback) {
+                            invalidFeedback.style.display = 'none';
+                        }
+                    }
+                } else {
+                    e.target.setCustomValidity('Пожалуйста, выберите файл для загрузки.');
+                    e.target.classList.add('is-invalid');
+                    e.target.classList.remove('is-valid');
+                    if (invalidFeedback) {
+                        invalidFeedback.textContent = 'Пожалуйста, выберите файл для загрузки.';
+                        invalidFeedback.style.display = 'block';
+                    }
+                }
+            });
+            
+            // URL input validation
+            document.getElementById('document-url').addEventListener('input', function(e) {
+                const url = e.target.value;
+                if (url && !isValidUrl(url)) {
+                    e.target.setCustomValidity('Введите корректный URL');
+                    e.target.classList.add('is-invalid');
+                } else {
+                    e.target.setCustomValidity('');
+                    e.target.classList.remove('is-invalid');
+                    if (url) e.target.classList.add('is-valid');
+                }
+            });
+        });
+
+        // URL validation helper
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        // Settings Management
+        function loadSettings() {
+            // Load settings from localStorage or server
+            const settings = JSON.parse(localStorage.getItem('mistral-ocr-settings') || '{}');
+            
+            // Apply settings to form elements
+            Object.keys(settings).forEach(key => {
+                const element = document.getElementById(key);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        element.checked = settings[key];
+                    } else {
+                        element.value = settings[key];
+                    }
+                }
+            });
+        }
+
+        function saveSettings() {
+            const settings = {};
+            
+            // Collect all settings from form elements
+            const settingsElements = [
+                'mistral-api-key', 'max-file-size', 'use-mock-ocr', 'auto-cleanup',
+                'theme-select', 'font-size-select', 'animations-enabled', 'syntax-highlighting',
+                'default-format', 'image-quality', 'include-metadata', 'preserve-formatting'
+            ];
+            
+            settingsElements.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        settings[id] = element.checked;
+                    } else {
+                        settings[id] = element.value;
+                    }
+                }
+            });
+            
+            // Save to localStorage
+            localStorage.setItem('mistral-ocr-settings', JSON.stringify(settings));
+            
+            // Show success message
+            showNotification('Настройки сохранены успешно!', 'success');
+            
+            // Apply theme if changed
+            if (settings['theme-select']) {
+                applyTheme(settings['theme-select']);
+            }
+        }
+
+        function resetSettings() {
+            if (confirm('Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?')) {
+                localStorage.removeItem('mistral-ocr-settings');
+                
+                // Reset form to defaults
+                document.getElementById('mistral-api-key').value = '';
+                document.getElementById('max-file-size').value = '50';
+                document.getElementById('use-mock-ocr').checked = true;
+                document.getElementById('auto-cleanup').checked = true;
+                document.getElementById('theme-select').value = 'dark';
+                document.getElementById('font-size-select').value = 'medium';
+                document.getElementById('animations-enabled').checked = true;
+                document.getElementById('syntax-highlighting').checked = true;
+                document.getElementById('default-format').value = 'markdown';
+                document.getElementById('image-quality').value = 'high';
+                document.getElementById('include-metadata').checked = true;
+                document.getElementById('preserve-formatting').checked = true;
+                
+                showNotification('Настройки сброшены к значениям по умолчанию', 'info');
+                applyTheme('dark');
+            }
+        }
+
+        function exportSettings() {
+            const settings = JSON.parse(localStorage.getItem('mistral-ocr-settings') || '{}');
+            const dataStr = JSON.stringify(settings, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'mistral-ocr-settings.json';
+            link.click();
+            
+            showNotification('Настройки экспортированы', 'success');
+        }
+
+        function importSettings() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const settings = JSON.parse(e.target.result);
+                            localStorage.setItem('mistral-ocr-settings', JSON.stringify(settings));
+                            loadSettings();
+                            showNotification('Настройки импортированы успешно!', 'success');
+                        } catch (error) {
+                            showNotification('Ошибка при импорте настроек. Проверьте формат файла.', 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            
+            input.click();
+        }
+
+        function applyTheme(theme) {
+            const html = document.documentElement;
+            
+            if (theme === 'light') {
+                html.setAttribute('data-theme', 'light');
+                // Update CSS variables for light theme
+                html.style.setProperty('--bg-primary', '#ffffff');
+                html.style.setProperty('--bg-secondary', '#f8fafc');
+                html.style.setProperty('--bg-tertiary', '#f1f5f9');
+                html.style.setProperty('--text-primary', '#0f172a');
+                html.style.setProperty('--text-secondary', '#475569');
+                html.style.setProperty('--text-muted', '#64748b');
+                html.style.setProperty('--border-color', '#e2e8f0');
+                html.style.setProperty('--border-light', '#cbd5e1');
+            } else if (theme === 'auto') {
+                // Detect system preference
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                applyTheme(prefersDark ? 'dark' : 'light');
+                return;
+            } else {
+                // Default to dark theme
+                html.setAttribute('data-theme', 'dark');
+                html.style.setProperty('--bg-primary', '#0f172a');
+                html.style.setProperty('--bg-secondary', '#1e293b');
+                html.style.setProperty('--bg-tertiary', '#334155');
+                html.style.setProperty('--text-primary', '#f8fafc');
+                html.style.setProperty('--text-secondary', '#cbd5e1');
+                html.style.setProperty('--text-muted', '#94a3b8');
+                html.style.setProperty('--border-color', '#475569');
+                html.style.setProperty('--border-light', '#64748b');
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} position-fixed`;
+            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            notification.innerHTML = `
+                <i class="bi bi-${type === 'error' ? 'exclamation-triangle' : type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto remove after 3 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+
+        // Initialize settings functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load saved settings
+            loadSettings();
+            
+            // Add settings event listeners
+            document.getElementById('save-settings').addEventListener('click', saveSettings);
+            document.getElementById('reset-settings').addEventListener('click', resetSettings);
+            document.getElementById('export-settings').addEventListener('click', exportSettings);
+            document.getElementById('import-settings').addEventListener('click', importSettings);
+            
+            // Theme change listener
+            document.getElementById('theme-select').addEventListener('change', function(e) {
+                applyTheme(e.target.value);
+            });
+            
+            // Listen for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+                const currentTheme = document.getElementById('theme-select').value;
+                if (currentTheme === 'auto') {
+                    applyTheme('auto');
+                }
+            });
+        });
     </script>
 </body>
 </html>

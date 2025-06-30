@@ -1,204 +1,308 @@
+/* Mistral OCR App - Enhanced Styles */
+/* Import all CSS modules */
+
+/* Base styles and variables */
+@import url('./base/variables.css');
+
+/* Layout and typography */
+@import url('./layout/main.css');
+
+/* Components */
+@import url('./components/buttons.css');
+@import url('./components/forms.css');
+@import url('./components/cards.css');
+
+/* Theme initialization */
+html {
+  /* Set default theme to dark */
+  --bg-primary: var(--dark-bg-primary);
+  --bg-secondary: var(--dark-bg-secondary);
+  --bg-tertiary: var(--dark-bg-tertiary);
+  --text-primary: var(--dark-text-primary);
+  --text-secondary: var(--dark-text-secondary);
+  --text-muted: var(--dark-text-muted);
+  --border-color: var(--dark-border);
+  --border-light: var(--dark-border-light);
+}
+
+/* Ensure body has proper theme attributes */
 body {
-    font-family: 'Inter', Arial, sans-serif;
-    background-color: #121212;
-    color: #e0e0e0;
-    line-height: 1.6;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh; /* Ensure full viewport height */
+  /* Layout is handled in layout/main.css */
 }
 
-.container-fluid {
-    max-width: 1200px;
-    padding: 2rem;
-}
-
-.upload-container {
-    background-color: #1e1e1e;
-    border-radius: 12px;
-    padding: 3rem;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-}
-
+/* Override Bootstrap styles for better integration */
 .nav-tabs .nav-link {
-    background-color: #252525;
-    color: #ccc;
-    border: none;
-    border-radius: 8px 8px 0 0;
-    margin-right: 5px;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+  margin-right: var(--spacing-xs) !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.nav-tabs .nav-link:hover,
+.nav-tabs .nav-link:focus {
+  border-color: var(--border-light) !important;
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
 }
 
 .nav-tabs .nav-link.active {
-    background-color: #333;
-    color: #fff;
-    border-bottom: 2px solid #5286f3;
+  color: var(--text-primary) !important;
+  background-color: var(--bg-primary) !important;
+  border-color: var(--border-color) var(--border-color) var(--bg-primary) !important;
+  border-bottom: 2px solid var(--primary-blue) !important;
 }
 
-.form-label {
-    color: #ddd; /* Более светлый цвет подсказки */
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
+/* Enhanced form controls for better visibility */
 .form-control {
-    background-color: #333; /* Более темный фон для ввода */
-    color: #fff; /* Белый текст ввода */
-    border: 1px solid #555; /* Более темная граница */
-    border-radius: 8px;
-    padding: 0.9rem;
-    margin-bottom: 1.5rem;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 2px solid var(--border-color) !important;
+  border-radius: var(--radius-lg) !important;
+  transition: all var(--transition-normal) !important;
 }
 
 .form-control::placeholder {
-    color: #ccc; /* Цвет placeholder */
-    opacity: 0.8; /* Уменьшенная прозрачность placeholder */
+  color: var(--text-muted) !important;
+  opacity: 1 !important;
 }
 
 .form-control:focus {
-    background-color: #444; /* Еще более темный фон при фокусе */
-    border-color: #5286f3;
-    box-shadow: 0 0 0 0.2rem rgba(82, 134, 243, 0.25);
-    color: #fff; /* Белый текст при фокусе */
+  background-color: var(--bg-primary) !important;
+  border-color: var(--primary-blue) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  color: var(--text-primary) !important;
 }
 
+/* Enhanced button styles */
 .btn-primary {
-    background-color: #5286f3; /* Основной цвет */
-    color: #fff; /* Белый текст */
-    border: 2px solid #5286f3; /* Бордер в цвет фона */
-    border-radius: 8px;
-    padding: 1rem 2rem;
-    transition: background-color 0.3s, color 0.3s, transform 0.2s, border-color 0.3s; /* Добавлен transition для border-color */
+  background-color: var(--primary-blue) !important;
+  border-color: var(--primary-blue) !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
+  transition: all var(--transition-normal) !important;
 }
 
-.btn-primary:hover {
-    background-color: #333; /* Темный фон при наведении */
-    color: #5286f3; /* Цвет текста меняется на основной цвет */
-    border-color: #5286f3; /* Бордер также меняет цвет */
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+.btn-primary:hover:not(:disabled) {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
 .btn-primary:focus {
-    box-shadow: 0 0 0 0.2rem rgba(82, 134, 243, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3) !important;
 }
 
-.btn-primary:disabled {
-    background-color: #777;
-    color: #ccc; /* Светло-серый текст для disabled */
-    border-color: #777; /* Бордер для disabled */
-    cursor: not-allowed;
+.btn-outline-light {
+  background-color: transparent !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-light) !important;
 }
 
-.spinner-border {
-    color: #fff;
+.btn-outline-light:hover:not(:disabled) {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--primary-blue) !important;
+  color: var(--primary-blue) !important;
 }
 
-.alert-danger {
-    background-color: #4a1515;
-    color: #ffb3b3;
-    border-color: #843534;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-top: 1.5rem;
-}
-
-.progress {
-    background-color: #252525;
-    border-radius: 8px;
-    height: 10px;
-    margin-bottom: 2rem;
-    overflow: hidden; /* Ensure rounded corners are visible */
-}
-
-.progress-bar {
-    background-color: #5286f3;
-    height: 100%;
-    width: 0%; /* Set in JS */
-    transition: width 0.3s ease-out;
-}
-
-#results-container {
-    margin-top: 2rem;
-}
-
+/* Enhanced card styles */
 .card {
-    background-color: #1e1e1e;
-    border: 1px solid #333;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-md) !important;
+  transition: all var(--transition-normal) !important;
 }
 
 .card-header {
-    background-color: #252525;
-    border-bottom: 1px solid #333;
-    padding: 1.5rem 2rem;
-    border-radius: 12px 12px 0 0;
+  background-color: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
 }
 
 .card-header h3 {
-    color: #fff;
-    margin-bottom: 0;
-    font-size: 1.7rem;
+  color: var(--text-primary) !important;
+  margin-bottom: 0 !important;
 }
 
-.card-body {
-    padding: 2rem;
+/* Enhanced alert styles */
+.alert-danger {
+  background-color: var(--error-red) !important;
+  border-color: var(--error-red) !important;
+  color: #ffffff !important;
 }
 
+/* Enhanced progress bar */
+.progress {
+  background-color: var(--bg-tertiary) !important;
+  border-radius: var(--radius-lg) !important;
+  height: 8px !important;
+  overflow: hidden !important;
+}
+
+.progress-bar {
+  background-color: var(--primary-blue) !important;
+  transition: width var(--transition-slow) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+/* Enhanced spinner */
+.spinner-border {
+  color: var(--text-primary) !important;
+  border-color: var(--text-primary) !important;
+  border-right-color: transparent !important;
+}
+
+/* Page preview enhancements */
 .page-preview {
-    margin-bottom: 3rem; /* Увеличен отступ снизу */
-    padding: 2rem; /* Увеличен внутренний отступ */
-    background-color: #2e2e2e; /* Фон немного светлее */
-    border-radius: 12px; /* Больший радиус скругления */
-    border: 1px solid #555; /* Более темная граница */
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); /* Тень */
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-xl) !important;
+  padding: var(--spacing-xl) !important;
+  margin-bottom: var(--spacing-2xl) !important;
+  box-shadow: var(--shadow-md) !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.page-preview:hover {
+  box-shadow: var(--shadow-lg) !important;
+  transform: translateY(-1px) !important;
 }
 
 .page-preview h4 {
-    color: #fff;
-    margin-top: 0;
-    margin-bottom: 1.5rem; /* Увеличен отступ снизу */
-    font-size: 1.8rem; /* Увеличен размер шрифта заголовка */
-    font-weight: bold; /* Жирный шрифт */
+  color: var(--text-primary) !important;
+  border-bottom: 2px solid var(--primary-blue) !important;
+  padding-bottom: var(--spacing-sm) !important;
+  display: inline-block !important;
 }
 
 .page-preview pre {
-    background-color: #333;
-    color: #eee; /* Текст еще светлее */
-    padding: 1.5rem; /* Увеличен внутренний отступ */
-    border-radius: 8px; /* Больший радиус скругления */
-    overflow-x: auto;
-    white-space: pre-wrap;
-    font-size: 1.1rem; /* Увеличен размер шрифта текста */
-    line-height: 1.7; /* Увеличен межстрочный интервал */
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: var(--spacing-lg) !important;
+  overflow-x: auto !important;
+  font-size: var(--font-size-sm) !important;
+  line-height: 1.6 !important;
 }
 
+/* Image preview enhancements */
 .image-preview {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin-top: 1rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-md) !important;
+  transition: all var(--transition-normal) !important;
+  cursor: pointer !important;
 }
 
-.download-options button {
-    background-color: #333;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 0.7rem 1.2rem;
-    margin-left: 0.5rem;
-    transition: background-color 0.3s;
+.image-preview:hover {
+  box-shadow: var(--shadow-lg) !important;
+  transform: scale(1.02) !important;
 }
 
-.download-options button:hover {
-    background-color: #444;
+/* Download options enhancements */
+.download-options .btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: var(--spacing-xs) !important;
+  padding: var(--spacing-sm) var(--spacing-md) !important;
+  font-size: var(--font-size-sm) !important;
+  transition: all var(--transition-normal) !important;
 }
 
-/* Скрытые элементы */
-.hidden {
+.download-options .btn:hover {
+  transform: translateY(-1px) !important;
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .form-control,
+  .btn,
+  .card {
+    border-width: 3px !important;
+  }
+  
+  .btn-primary {
+    background-color: #0000ff !important;
+    border-color: #0000ff !important;
+  }
+  
+  .btn-primary:hover {
+    background-color: #000080 !important;
+    border-color: #000080 !important;
+  }
+}
+
+/* Focus indicators for keyboard navigation */
+.btn:focus,
+.form-control:focus,
+.nav-link:focus {
+  outline: 3px solid var(--primary-blue) !important;
+  outline-offset: 2px !important;
+}
+
+/* Mobile-specific enhancements */
+@media (max-width: 768px) {
+  body {
+    padding: var(--spacing-md) 0 !important;
+  }
+  
+  .container-fluid {
+    padding: 0 var(--spacing-md) !important;
+  }
+  
+  .card-header {
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+  }
+  
+  .card-body {
+    padding: var(--spacing-lg) !important;
+  }
+  
+  .page-preview {
+    padding: var(--spacing-lg) !important;
+  }
+  
+  .download-options {
+    flex-direction: column !important;
+    gap: var(--spacing-xs) !important;
+  }
+  
+  .download-options .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .nav-tabs,
+  .btn,
+  .download-options,
+  .upload-container {
     display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .page-preview {
+    break-inside: avoid !important;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
 }
