@@ -354,7 +354,8 @@ def mock_ocr_processing(file_path, include_images=True):
             demo_images.append({
                 "id": "demo_img_1", 
                 "path": demo_img_path,  # Полный путь к файлу
-                "image_base64": f"data:image/png;base64,{demo_img_b64_data}"
+                "base64_data": "",  # ПУСТЫЕ base64 данные для тестирования fallback
+                "coordinates": {"top_left_x": 100, "top_left_y": 50, "bottom_right_x": 400, "bottom_right_y": 300}
             })
             logger.info(f"[MOCK_OCR] Данные демо-изображения добавлены: id=demo_img_1, path={demo_img_path}")
         except Exception as e:
@@ -581,15 +582,25 @@ def mistral_ocr_processing(file_path, include_images=True):
         
         processed_pages.append(page_data)
 
-    # ENHANCED: Fallback извлечение изображений из PDF если API не вернул base64
-    if include_images and file_path.lower().endswith('.pdf'):
-        logger.info(f"Проверка fallback: PyMuPDF={PYMUPDF_AVAILABLE}, Pillow={PILLOW_AVAILABLE}")
-        if PYMUPDF_AVAILABLE:
-            logger.info("Выполняем fallback извлечение изображений из PDF")
-        else:
-            logger.warning("PyMuPDF недоступен - fallback извлечение пропущено")
+    # ENHANCED: Fallback извлечение изображений из PDF если API нашел изображения но не вернул base64
+    # Проверяем есть ли изображения с пустыми base64 данными
+    images_with_empty_base64 = 0
+    for page_data in processed_pages:
+        if page_data.get('images'):
+            for img_info in page_data['images']:
+                if not img_info.get('image_base64'):  # ИСПРАВЛЕНО: проверяем правильное поле
+                    images_with_empty_base64 += 1
+    
+    needs_fallback = (file_path.lower().endswith('.pdf') and 
+                     images_with_empty_base64 > 0 and 
+                     PYMUPDF_AVAILABLE)
+    
+    if needs_fallback:
+        logger.info(f"Проверка fallback: найдено {images_with_empty_base64} изображений с пустыми base64")
+        logger.info(f"Fallback условия: PyMuPDF={PYMUPDF_AVAILABLE}, Pillow={PILLOW_AVAILABLE}")
+        logger.info("Выполняем fallback извлечение изображений из PDF")
             
-    if include_images and file_path.lower().endswith('.pdf') and PYMUPDF_AVAILABLE:
+    if needs_fallback:
         
         # Извлекаем страницы PDF как изображения для сравнения
         pdf_page_images = extract_pdf_pages_as_images(file_path)
