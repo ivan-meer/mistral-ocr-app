@@ -61,6 +61,59 @@ def get_mime_type_by_filename(filename):
     mime_type, _ = mimetypes.guess_type(filename)
     return mime_type or 'application/octet-stream'
 
+def update_markdown_image_links(page_data, page_index, include_images):
+    """Универсальная функция для обновления ссылок на изображения в markdown."""
+    if not include_images:
+        logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: include_images=False, пропускаем")
+        return
+        
+    markdown_text = page_data.get('markdown', '')
+    if not markdown_text:
+        logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: нет markdown текста")
+        return
+        
+    logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: markdown содержит {len(markdown_text)} символов")
+    
+    markdown_images = extract_images_from_markdown(markdown_text, page_index)
+    if not markdown_images:
+        logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: не найдено ссылок на изображения в markdown")
+        return
+        
+    # Найдем API изображения с путями (после возможного связывания с fallback)
+    saved_api_images_for_page = [img for img in page_data.get("images", []) if img.get("path")]
+    logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: найдено {len(markdown_images)} MD ссылок, {len(saved_api_images_for_page)} изображений с путями")
+    
+    # Детальная отладка найденных изображений
+    for i, img in enumerate(page_data.get("images", [])):
+        logger.info(f"[MARKDOWN UPDATE] Изображение {i}: id='{img.get('id')}', path='{img.get('path')}', coords={img.get('coordinates')}")
+    
+    temp_updated_markdown = markdown_text
+    updates_made = 0
+    for k, md_img in enumerate(markdown_images):
+        logger.info(f"[MARKDOWN UPDATE] Обрабатываем MD ссылку {k+1}: '{md_img['markdown_pattern']}'")
+        
+        if k < len(saved_api_images_for_page):
+            api_image_data = saved_api_images_for_page[k]
+            img_filename_on_disk = os.path.basename(api_image_data['path'])
+            new_url = f"/image/{img_filename_on_disk}"
+            
+            old_pattern = md_img['markdown_pattern']
+            new_pattern = f"![{md_img['alt_text']}]({new_url})"
+            
+            logger.info(f"[MARKDOWN UPDATE] Замена MD ссылки {k+1}: '{old_pattern}' -> '{new_pattern}'")
+            
+            if old_pattern in temp_updated_markdown:
+                temp_updated_markdown = temp_updated_markdown.replace(old_pattern, new_pattern, 1)
+                updates_made += 1
+                logger.info(f"[MARKDOWN UPDATE] ✅ Замена выполнена успешно")
+            else:
+                logger.warning(f"[MARKDOWN UPDATE] ❌ Паттерн '{old_pattern}' не найден в markdown!")
+        else:
+            logger.warning(f"[MARKDOWN UPDATE] Нет изображения для MD ссылки {k+1}: '{md_img['markdown_pattern']}'")
+    
+    logger.info(f"[MARKDOWN UPDATE] Страница {page_index}: выполнено {updates_made} замен из {len(markdown_images)} найденных")
+    page_data["markdown"] = temp_updated_markdown
+
 def extract_images_from_markdown(markdown_text, page_index):
     """Извлекает ссылки на изображения из markdown текста Mistral OCR."""
     # FIXED: Парсим markdown для извлечения ссылок на изображения
@@ -160,6 +213,36 @@ def enhanced_base64_processing(base64_data, img_id):
     
     except Exception as e:
         logger.error(f"Ошибка декодирования base64 для {img_id}: {e}")
+        return None
+
+def save_base64_image(img_id, base64_data, upload_folder):
+    """Сохраняет base64 изображение как реальный файл (аналогично Next.js приложению)."""
+    try:
+        # Определяем MIME тип из base64 данных
+        if base64_data.startswith('data:'):
+            # Формат: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...
+            header, data = base64_data.split(',', 1)
+            mime_type = header.split(';')[0].split(':')[1]
+            extension = mime_type.split('/')[1]
+        else:
+            # Просто base64 без заголовка
+            data = base64_data
+            extension = 'jpeg'  # По умолчанию
+            
+        # Создаем уникальное имя файла
+        filename = f"{img_id}-{os.urandom(4).hex()}.{extension}"
+        file_path = os.path.join(upload_folder, filename)
+        
+        # Декодируем и сохраняем
+        image_data = base64.b64decode(data)
+        with open(file_path, 'wb') as f:
+            f.write(image_data)
+            
+        logger.info(f"Изображение сохранено: {file_path} ({len(image_data)} байт)")
+        return file_path
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения base64 изображения {img_id}: {e}")
         return None
 
 def create_svg_placeholder(filename, image_id, width, height):
@@ -452,8 +535,9 @@ def mistral_ocr_processing(file_path, include_images=True):
     for page in ocr_response.pages:
         page_data = {"index": page.index, "markdown": page.markdown, "images": []}
         
-        # FIXED: Извлекаем изображения из base64 (если есть)
-        if include_images and page.images:
+        # FIXED: Извлекаем изображения из API ответа (независимо от настройки include_images)
+        # Если API нашел изображения, они должны обрабатываться для fallback
+        if page.images:
             logger.info(f"Обрабатываем {len(page.images)} изображений из API base64")
             for img in page.images:
                 try:
@@ -462,39 +546,24 @@ def mistral_ocr_processing(file_path, include_images=True):
                     img_id = getattr(img, 'id', f'img_{len(page_data["images"])}')
                     
                     if not base64_data:
-                        logger.warning(f"Изображение {img_id} не содержит base64 данных. Создаем SVG-плейсхолдер.")
-                        # Дополнительная диагностика
-                        file_size = os.path.getsize(file_path) / (1024*1024)  # МБ
-                        logger.info(f"Диагностика изображения {img_id}: файл {file_size:.1f}МБ, MIME: {mime_type}")
-                        logger.info(f"Возможные причины: 1) Векторная графика 2) Защищенный PDF 3) Специальная компрессия 4) API limitation")
-                        # Создаем плейсхолдер с координатами
+                        logger.warning(f"Изображение {img_id} не содержит base64 данных - добавляем для fallback обработки")
+                        # Добавляем изображение БЕЗ base64 данных для fallback обработки
                         coordinates = {
                             'top_left_x': getattr(img, 'top_left_x', 0),
                             'top_left_y': getattr(img, 'top_left_y', 0),
                             'bottom_right_x': getattr(img, 'bottom_right_x', 600),
                             'bottom_right_y': getattr(img, 'bottom_right_y', 400)
                         }
-                        width = coordinates['bottom_right_x'] - coordinates['top_left_x']
-                        height = coordinates['bottom_right_y'] - coordinates['top_left_y']
-                        
-                        # Используем безопасные размеры для плейсхолдера
-                        placeholder_width = width if width > 0 else 600
-                        placeholder_height = height if height > 0 else 400
-                        
-                        placeholder_filename = f"placeholder_{page.index}_{img_id}.svg"
-                        # Создаем SVG плейсхолдер с помощью новой функции
-                        img_path = create_svg_placeholder(placeholder_filename, img_id, placeholder_width, placeholder_height)
                         
                         page_data["images"].append({
                             "id": img_id,
-                            "path": img_path,  # Теперь path будет всегда указан
-                            "image_base64": None,
+                            "path": None,  # Пока нет пути - будет добавлен fallback логикой
+                            "image_base64": None,  # Пустые данные
                             "coordinates": coordinates,
-                            "width": placeholder_width,
-                            "height": placeholder_height,
+                            "width": coordinates['bottom_right_x'] - coordinates['top_left_x'],
+                            "height": coordinates['bottom_right_y'] - coordinates['top_left_y'],
                             "alt_text": f"Изображение {img_id}"
                         })
-                        logger.info(f"Создан SVG плейсхолдер: {placeholder_filename} ({placeholder_width}x{placeholder_height})")
                         continue
                     
                     # ENHANCED: Используем улучшенную обработку base64 согласно лучшим практикам
@@ -535,61 +604,30 @@ def mistral_ocr_processing(file_path, include_images=True):
                         "image_base64": getattr(img, 'image_base64', None)
                     })
         
-        # FIXED: Обрабатываем ссылки на изображения в markdown согласно документации Mistral
-        if include_images:
-            markdown_images = extract_images_from_markdown(page.markdown, page.index)
-            logger.info(f"Найдено {len(markdown_images)} изображений в markdown")
-            
-            # Обновляем markdown, заменяя ссылки на изображения на корректные URL
-            updated_markdown = page.markdown
-            for md_img in markdown_images:
-                # Ищем соответствующее изображение из API данных по ID
-                api_image = None
-                for img_data in page_data["images"]:
-                    # Attempt to match by ID first (if md_img has a meaningful ID extracted from ref)
-                    # However, the primary strategy will be order-based matching for robustness.
-                    # The md_img['id'] is currently the image_ref itself, which might not be a simple API ID.
-                    pass # Current ID matching is likely insufficient.
-
-            # Order-based matching:
-            # Assume the k-th image tag in markdown corresponds to the k-th image in page.images from API
-            saved_api_images_for_page = [img for img in page_data["images"] if img.get("path")]
-
-            logger.info(f"[MISTRAL_OCR] Найдено {len(markdown_images)} ссылок на изображения в Markdown для стр. {page.index}.")
-            logger.info(f"[MISTRAL_OCR] Сохранено {len(saved_api_images_for_page)} изображений из API base64 для стр. {page.index}.")
-
-            temp_updated_markdown = page.markdown # Start with original markdown for this page
-
-            for k, md_img in enumerate(markdown_images):
-                if k < len(saved_api_images_for_page):
-                    api_image_data = saved_api_images_for_page[k]
-                    img_filename_on_disk = os.path.basename(api_image_data['path'])
-                    # We already secured the filename when saving, so no need for secure_filename() here again.
-                    new_url = f"/image/{img_filename_on_disk}"
-
-                    logger.info(f"[MISTRAL_OCR] Замена (по порядку) MD ссылки {k+1}: '{md_img['markdown_pattern']}' -> '![{md_img['alt_text']}]({new_url})'")
-
-                    # Replace only the first occurrence of the pattern to avoid issues if multiple identical image refs exist
-                    # and should map to different API images (though less likely for typical OCR output).
-                    # A more robust way would be to parse markdown structure, but regex replace is used here.
-                    # Ensure md_img['markdown_pattern'] is properly escaped for regex if it contains special characters.
-                    # For now, direct string replacement of the exact pattern:
-                    temp_updated_markdown = temp_updated_markdown.replace(md_img['markdown_pattern'], f"![{md_img['alt_text']}]({new_url})", 1)
-                else:
-                    logger.warning(f"[MISTRAL_OCR] Нет соответствующего API изображения (по порядку) для MD ссылки {k+1}: '{md_img['markdown_pattern']}'. Будет использован placeholder.")
-            
-            page_data["markdown"] = temp_updated_markdown
-        
         processed_pages.append(page_data)
 
     # ENHANCED: Fallback извлечение изображений из PDF если API нашел изображения но не вернул base64
     # Проверяем есть ли изображения с пустыми base64 данными
     images_with_empty_base64 = 0
-    for page_data in processed_pages:
+    total_images_found = 0
+    logger.info(f"[FALLBACK DEBUG] Начинаем проверку processed_pages, всего страниц: {len(processed_pages)}")
+    
+    for page_idx, page_data in enumerate(processed_pages):
         if page_data.get('images'):
-            for img_info in page_data['images']:
-                if not img_info.get('image_base64'):  # ИСПРАВЛЕНО: проверяем правильное поле
+            page_images = len(page_data['images'])
+            total_images_found += page_images
+            logger.info(f"[FALLBACK DEBUG] Страница {page_idx}: найдено {page_images} изображений")
+            
+            for img_idx, img_info in enumerate(page_data['images']):
+                base64_data = img_info.get('image_base64')
+                img_id = img_info.get('id', 'unknown')
+                
+                logger.info(f"[FALLBACK DEBUG] Страница {page_idx}, изображение {img_idx}: id={img_id}, image_base64={'пустое' if not base64_data else 'есть'}")
+                
+                if not base64_data:  # ИСПРАВЛЕНО: проверяем правильное поле
                     images_with_empty_base64 += 1
+    
+    logger.info(f"[FALLBACK DEBUG] Итого найдено изображений: {total_images_found}, с пустыми base64: {images_with_empty_base64}")
     
     needs_fallback = (file_path.lower().endswith('.pdf') and 
                      images_with_empty_base64 > 0 and 
@@ -626,11 +664,37 @@ def mistral_ocr_processing(file_path, include_images=True):
                     page_data['fallback_images'] = []
                 page_data['fallback_images'].extend(page_extracted)
                 logger.info(f"Добавлено {len(page_extracted)} fallback изображений для страницы {i}")
+                
+                # ENHANCED: Связываем пустые API изображения с fallback изображениями
+                api_images_with_empty_base64 = [img for img in page_data['images'] if not img.get('image_base64')]
+                if api_images_with_empty_base64:
+                    logger.info(f"Найдено {len(api_images_with_empty_base64)} API изображений с пустыми base64 на странице {i}")
+                    
+                    # Сопоставляем API изображения с fallback изображениями (по порядку)
+                    for j, api_img in enumerate(api_images_with_empty_base64):
+                        if j < len(page_extracted):
+                            fallback_img = page_extracted[j]
+                            # Обновляем путь API изображения на fallback изображение
+                            api_img['path'] = fallback_img['image_path']
+                            logger.info(f"Связали API изображение '{api_img['id']}' с fallback файлом: {fallback_img['image_path']}")
+                        else:
+                            logger.warning(f"Недостаточно fallback изображений для API изображения '{api_img['id']}' на странице {i}")
+                    
+                    # ENHANCED: Обновляем markdown ссылки после связывания с fallback изображениями
+                    update_markdown_image_links(page_data, i, include_images)
+    
+    # ФИНАЛЬНОЕ ОБНОВЛЕНИЕ: Обновляем markdown ссылки для всех страниц (включая те, где не было fallback)
+    for i, page_data in enumerate(processed_pages):
+        # ИСПРАВЛЕНИЕ: Обновляем markdown если есть изображения, независимо от include_images
+        has_images_with_paths = any(img.get("path") for img in page_data.get("images", []))
+        should_update_markdown = include_images or has_images_with_paths
+        logger.info(f"[FINAL MARKDOWN] Страница {i}: include_images={include_images}, has_images_with_paths={has_images_with_paths}, should_update={should_update_markdown}")
+        update_markdown_image_links(page_data, i, should_update_markdown)
 
     return {"document_url": signed_url.url, "pages": processed_pages}
 
 
-def process_ocr_document(file_path, include_images=True):
+def process_ocr_document(file_path, include_images=True, export_format="embedded"):
     """Выбирает метод обработки OCR (моковый или реальный) и сохраняет результаты."""
     try:
         if app.config['USE_MOCK_OCR']:
@@ -640,10 +704,27 @@ def process_ocr_document(file_path, include_images=True):
 
         # Сохранение результатов в файлы происходит после получения данных от OCR
         markdown_filename, json_filename = save_results_to_files(
-            ocr_result, app.config['UPLOAD_FOLDER'], include_images
+            ocr_result, app.config['UPLOAD_FOLDER'], include_images, export_format
         )
         ocr_result["markdown_file"] = markdown_filename
         ocr_result["json_file"] = json_filename
+
+        # НОВОЕ: Автоматическая очистка временных файлов для embedded формата
+        if export_format == "embedded":
+            cleanup_temp_files(ocr_result)
+            
+            # Добавляем статистику для пользователя
+            total_images = sum(len(page.get('images', [])) for page in ocr_result.get('pages', []))
+            fallback_pages = sum(1 for page in ocr_result.get('pages', []) if page.get('fallback_images'))
+            
+            ocr_result['processing_info'] = {
+                'export_format': export_format,
+                'total_images': total_images,
+                'fallback_used': fallback_pages > 0,
+                'fallback_pages': fallback_pages,
+                'embedded_images': True if export_format == "embedded" else False
+            }
+            logger.info(f"Обработка завершена: {total_images} изображений, fallback использован на {fallback_pages} страницах")
 
         return ocr_result
 
@@ -654,37 +735,91 @@ def process_ocr_document(file_path, include_images=True):
         raise ValueError(f"Внутренняя ошибка сервера при OCR обработке: {e}")
 
 
-def save_results_to_files(result_data, upload_folder, include_images=True):
+def create_embedded_markdown(result_data):
+    """Создает markdown с встроенными base64 изображениями"""
+    markdown_content_pages = []
+    for page in result_data.get('pages', []):
+        page_markdown = f"# Страница {page.get('index', 0) + 1}\n\n{page.get('markdown', '')}"
+        
+        # Встраиваем изображения как base64
+        for img_info in page.get('images', []):
+            img_path = img_info.get('path')
+            img_url = img_info.get('url', '')
+            
+            if img_path and os.path.exists(img_path):
+                try:
+                    with open(img_path, "rb") as image_file:
+                        image_data_b64 = base64.b64encode(image_file.read()).decode('utf-8')
+                    
+                    # Определяем формат изображения
+                    ext = os.path.splitext(img_path)[1].lower()
+                    if ext in ['.png']:
+                        mime_type = 'image/png'
+                    elif ext in ['.jpg', '.jpeg']:
+                        mime_type = 'image/jpeg'
+                    else:
+                        mime_type = 'image/png'  # По умолчанию
+                    
+                    data_url = f"data:{mime_type};base64,{image_data_b64}"
+                    
+                    # Заменяем URL на data URL в markdown
+                    if img_url in page_markdown:
+                        page_markdown = page_markdown.replace(img_url, data_url)
+                        logger.info(f"Встроено изображение {img_info.get('id')} как base64")
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка встраивания изображения {img_path}: {e}")
+        
+        markdown_content_pages.append(page_markdown)
+    
+    return "\n\n---\n\n".join(markdown_content_pages)
+
+def cleanup_temp_files(ocr_result):
+    """Удаляет временные файлы после встраивания изображений в markdown"""
+    cleaned_files = 0
+    for page in ocr_result.get('pages', []):
+        # Удаляем PDF страницы
+        if page.get('pdf_page_image', {}).get('path'):
+            if safe_remove_file(page['pdf_page_image']['path']):
+                cleaned_files += 1
+        
+        # Удаляем fallback изображения  
+        for fb_img in page.get('fallback_images', []):
+            if safe_remove_file(fb_img.get('image_path')):
+                cleaned_files += 1
+        
+        # Удаляем извлеченные изображения
+        for img in page.get('images', []):
+            if safe_remove_file(img.get('path')):
+                cleaned_files += 1
+    
+    logger.info(f"Автоматически удалено {cleaned_files} временных файлов")
+
+def safe_remove_file(file_path):
+    """Безопасно удаляет файл"""
+    try:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+            logger.debug(f"Удален временный файл: {file_path}")
+            return True
+    except Exception as e:
+        logger.warning(f"Не удалось удалить файл {file_path}: {e}")
+    return False
+
+def save_results_to_files(result_data, upload_folder, include_images=True, export_format="embedded"):
     """Сохраняет результаты OCR в файлы Markdown и JSON."""
     try:
-        # Markdown
-        markdown_content_pages = []
-        for page in result_data.get('pages', []):
-            page_markdown = f"# Страница {page.get('index', 0) + 1}\n\n{page.get('markdown', '')}"
-            if include_images and page.get('images'):
-                for img_info in page['images']:
-                    img_path = img_info.get('path')
-                    # FIXED: Исправлена обработка изображений для корректного отображения
-                    if img_path and os.path.exists(img_path):
-                        # Если файл существует, читаем его и встраиваем в markdown
-                        with open(img_path, "rb") as image_file:
-                            image_data_b64 = base64.b64encode(image_file.read()).decode('utf-8')
-                        page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64})\n\n"
-                    elif app.config['USE_MOCK_OCR'] and img_info.get('image_base64'):
-                        # Для демо-режима используем готовый base64
-                        image_data_b64 = img_info['image_base64']
-                        if image_data_b64.startswith('data:image'):
-                            # Если уже есть префикс, используем как есть
-                            page_markdown += f"\n\n![image]({image_data_b64})\n\n"
-                        else:
-                            # Добавляем префикс если его нет
-                            page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64})\n\n"
-                    else:
-                        logger.warning(f"Изображение не найдено: {img_path} для страницы {page.get('index')}")
-
-            markdown_content_pages.append(page_markdown)
-
-        markdown_content = "\n\n---\n\n".join(markdown_content_pages)
+        # Выбираем способ создания markdown в зависимости от формата экспорта
+        if export_format == "embedded":
+            markdown_content = create_embedded_markdown(result_data)
+            logger.info("Создан embedded markdown с встроенными base64 изображениями")
+        else:
+            # Стандартный markdown с ссылками (для совместимости)
+            markdown_content_pages = []
+            for page in result_data.get('pages', []):
+                page_markdown = f"# Страница {page.get('index', 0) + 1}\n\n{page.get('markdown', '')}"
+                markdown_content_pages.append(page_markdown)
+            markdown_content = "\n\n---\n\n".join(markdown_content_pages)
         markdown_filename = f"document_ocr_{os.urandom(8).hex()}.md"
         markdown_filepath = os.path.join(upload_folder, secure_filename(markdown_filename))
         with open(markdown_filepath, "w", encoding="utf-8") as md_file:
@@ -757,8 +892,12 @@ def upload_document_route():
         # Параметр include_images извлекается из формы, по умолчанию True
         include_images_str = request.form.get('include_images', 'true').lower()
         include_images = include_images_str == 'true'
+        
+        # НОВОЕ: Добавляем параметр формата экспорта (по умолчанию embedded для решения проблемы пользователя)
+        export_format = request.form.get('export_format', 'embedded')
+        logger.info(f"Используется формат экспорта: {export_format}")
 
-        result = process_ocr_document(filepath_to_process, include_images=include_images)
+        result = process_ocr_document(filepath_to_process, include_images=include_images, export_format=export_format)
 
         # FIXED: Улучшенная обработка путей к изображениям для фронтенда
         total_images = 0
@@ -865,59 +1004,8 @@ def serve_image_route(filename):
 
     return send_file(filepath, mimetype=mime_type)
 
-@app.route('/<path:image_path>')
-def serve_markdown_image(image_path):
-    """FIXED: Обрабатывает прямые запросы к изображениям из markdown с улучшенными placeholder."""
-    # Проверяем, что это запрос к изображению
-    if not any(image_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-        # Если не изображение, возвращаем 404
-        from flask import abort
-        abort(404)
-    
-    logger.info(f"Запрос к markdown изображению: {image_path} - создаем профессиональный SVG placeholder")
-    
-    # Создаем улучшенный placeholder SVG для изображений из markdown
-    from flask import Response
-    
-    # Определяем размеры на основе типичных пропорций документа
-    # TODO: В будущем можно получать реальные размеры из координат
-    width = 600
-    height = 400
-    
-    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
-        <defs>
-            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" stroke-width="1"/>
-            </pattern>
-        </defs>
-        
-        <rect width="{width}" height="{height}" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
-        <rect width="{width}" height="{height}" fill="url(#grid)" opacity="0.3"/>
-        
-        <!-- Иконка изображения -->
-        <rect x="{width//2-30}" y="{height//2-50}" width="60" height="40" fill="#cbd5e1" rx="4"/>
-        <circle cx="{width//2-15}" cy="{height//2-35}" r="6" fill="#94a3b8"/>
-        <polygon points="{width//2-25},{height//2-20} {width//2-5},{height//2-30} {width//2+15},{height//2-15} {width//2+25},{height//2-15}" fill="#94a3b8"/>
-        
-        <!-- Текст -->
-        <text x="{width//2}" y="{height//2+20}" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="18" font-weight="bold">
-            Изображение из PDF
-        </text>
-        <text x="{width//2}" y="{height//2+45}" text-anchor="middle" fill="#64748b" font-family="Arial, sans-serif" font-size="14">
-            {image_path}
-        </text>
-        <text x="{width//2}" y="{height//2+65}" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="12">
-            Обнаружено Mistral OCR API
-        </text>
-        <text x="{width//2}" y="{height//2+85}" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10">
-            Base64 данные недоступны
-        </text>
-        
-        <!-- Декоративные элементы -->
-        <rect x="20" y="20" width="{width-40}" height="{height-40}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="5,5" opacity="0.5"/>
-    </svg>'''
-    
-    return Response(svg_content, mimetype='image/svg+xml')
+# УДАЛЕН: catch-all роут который блокировал корректное отображение реальных изображений
+# Теперь полагаемся на корректные markdown ссылки вида /image/<filename>
 
 # --- API Эндпоинты (для потенциального GUI) ---
 @app.route('/api/status', methods=['GET'])

@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const formData = new FormData(form);
 
-        fetch('/process_ocr', {
+        fetch('/upload', {
             method: 'POST',
             body: formData
         })
@@ -56,7 +56,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.body.removeChild(downloadLink);
                 }
                 
-                alert('Документ успешно обработан! Файл загружен.');
+                // Показываем детальную информацию о результате
+                let message = 'Документ успешно обработан! Файл загружен.';
+                
+                // Добавляем статистику если доступна
+                if (data.processing_info) {
+                    const info = data.processing_info;
+                    message += `\n\n📊 Статистика обработки:`;
+                    message += `\n🖼️ Изображений найдено: ${info.total_images}`;
+                    if (info.fallback_used) {
+                        message += `\n🔧 Fallback извлечение: Да (${info.fallback_pages} стр.)`;
+                    }
+                    if (info.embedded_images) {
+                        message += `\n✅ Изображения встроены в markdown как base64`;
+                        message += `\n🧹 Временные файлы автоматически удалены`;
+                    }
+                    message += `\n📄 Формат экспорта: ${info.export_format}`;
+                }
+                
+                alert(message);
             } else {
                 // Ошибка
                 errorMessage.textContent = data.message || 'Неизвестная ошибка';
