@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение результатов - Mistral OCR</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Enhanced CSS -->
+    <link rel="stylesheet" href="../static/css/main.css">
+    
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        .comparison-container {
+            height: calc(100vh - 120px);
+            overflow: hidden;
+        }
+        
+        .comparison-panel {
+            height: 100%;
+            overflow-y: auto;
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 15px;
+            background: var(--bg-secondary);
+        }
+        
+        .pdf-viewer {
+            text-align: center;
+        }
+        
+        .pdf-page-image {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+        
+        .zoom-controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .extracted-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .extracted-image {
+            max-width: 200px;
+            max-height: 150px;
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .fallback-images {
+            margin-top: 15px;
+            padding: 10px;
+            background: var(--bg-primary);
+            border-radius: 6px;
+        }
+        
+        .comparison-stats {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: var(--bg-secondary);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--bg-tertiary);
+            min-width: 250px;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--bg-tertiary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="app-title mb-0">
+                        <i class="bi bi-columns-gap me-2"></i>
+                        Сравнение результатов OCR
+                    </h1>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-arrow-left me-1"></i>Назад
+                    </a>
+                    <button class="btn btn-outline-light btn-sm" id="refresh-btn">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Обновить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Statistics Panel -->
+    <div class="comparison-stats" id="stats-panel">
+        <h6><i class="bi bi-graph-up me-2"></i>Статистика</h6>
+        <div id="stats-content">
+            <p class="mb-1">Выберите документ для анализа</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container-fluid mt-3">
+        <div class="row comparison-container">
+            <!-- Original PDF Column -->
+            <div class="col-md-6">
+                <div class="comparison-panel">
+                    <div class="page-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>
+                            Оригинальный PDF
+                        </h5>
+                        <div class="zoom-controls">
+                            <button class="btn btn-sm btn-outline-primary" id="pdf-zoom-out">
+                                <i class="bi bi-zoom-out"></i>
+                            </button>
+                            <span class="px-2" id="pdf-zoom-level">100%</span>
+                            <button class="btn btn-sm btn-outline-primary" id="pdf-zoom-in">
+                                <i class="bi bi-zoom-in"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="pdf-viewer" id="pdf-viewer">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-file-earmark-pdf display-4"></i>
+                            <p class="mt-3">Загрузите документ для просмотра</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OCR Results Column -->
+            <div class="col-md-6">
+                <div class="comparison-panel">
+                    <div class="page-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-file-earmark-text me-2"></i>
+                            Результат OCR
+                        </h5>
+                        <div class="zoom-controls">
+                            <button class="btn btn-sm btn-outline-success" id="ocr-zoom-out">
+                                <i class="bi bi-zoom-out"></i>
+                            </button>
+                            <span class="px-2" id="ocr-zoom-level">100%</span>
+                            <button class="btn btn-sm btn-outline-success" id="ocr-zoom-in">
+                                <i class="bi bi-zoom-in"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="ocr-results">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-file-earmark-text display-4"></i>
+                            <p class="mt-3">Результаты OCR появятся здесь</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Image Modal -->
+    <div class="modal fade" id="imageModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="imageModalLabel">Просмотр изображения</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img src="" alt="Увеличенное изображение" class="img-fluid" id="modalImage">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        class ComparisonViewer {
+            constructor() {
+                this.currentData = null;
+                this.pdfZoom = 1.0;
+                this.ocrZoom = 1.0;
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.loadLastResults();
+            }
+
+            setupEventListeners() {
+                // Zoom controls
+                document.getElementById('pdf-zoom-in').addEventListener('click', () => this.zoomPdf(1.2));
+                document.getElementById('pdf-zoom-out').addEventListener('click', () => this.zoomPdf(0.8));
+                document.getElementById('ocr-zoom-in').addEventListener('click', () => this.zoomOcr(1.2));
+                document.getElementById('ocr-zoom-out').addEventListener('click', () => this.zoomOcr(0.8));
+
+                // Refresh button
+                document.getElementById('refresh-btn').addEventListener('click', () => this.loadLastResults());
+
+                // Image modal
+                document.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('extracted-image') || e.target.classList.contains('pdf-page-image')) {
+                        this.showImageModal(e.target.src, e.target.alt || 'Изображение');
+                    }
+                });
+            }
+
+            zoomPdf(factor) {
+                this.pdfZoom *= factor;
+                this.pdfZoom = Math.max(0.5, Math.min(3.0, this.pdfZoom));
+                document.getElementById('pdf-zoom-level').textContent = Math.round(this.pdfZoom * 100) + '%';
+                
+                const images = document.querySelectorAll('#pdf-viewer .pdf-page-image');
+                images.forEach(img => {
+                    img.style.transform = `scale(${this.pdfZoom})`;
+                    img.style.transformOrigin = 'center top';
+                });
+            }
+
+            zoomOcr(factor) {
+                this.ocrZoom *= factor;
+                this.ocrZoom = Math.max(0.5, Math.min(3.0, this.ocrZoom));
+                document.getElementById('ocr-zoom-level').textContent = Math.round(this.ocrZoom * 100) + '%';
+                
+                const content = document.getElementById('ocr-results');
+                content.style.transform = `scale(${this.ocrZoom})`;
+                content.style.transformOrigin = 'center top';
+            }
+
+            showImageModal(src, title) {
+                document.getElementById('modalImage').src = src;
+                document.getElementById('imageModalLabel').textContent = title;
+                new bootstrap.Modal(document.getElementById('imageModal')).show();
+            }
+
+            loadLastResults() {
+                // Try to get results from localStorage or fetch latest
+                const lastResults = localStorage.getItem('lastOcrResults');
+                if (lastResults) {
+                    try {
+                        const data = JSON.parse(lastResults);
+                        this.displayResults(data);
+                    } catch (e) {
+                        console.error('Error parsing stored results:', e);
+                    }
+                }
+            }
+
+            displayResults(data) {
+                this.currentData = data;
+                this.displayPdfPages(data);
+                this.displayOcrResults(data);
+                this.updateStats(data);
+            }
+
+            displayPdfPages(data) {
+                const pdfViewer = document.getElementById('pdf-viewer');
+                let html = '';
+
+                if (data.pages && data.pages.length > 0) {
+                    data.pages.forEach((page, index) => {
+                        if (page.pdf_page_image) {
+                            const imageName = page.pdf_page_image.path.split('/').pop();
+                            html += `
+                                <div class="mb-4">
+                                    <h6>Страница ${index + 1}</h6>
+                                    <img src="/pdf_page/${imageName}" 
+                                         alt="PDF Страница ${index + 1}" 
+                                         class="pdf-page-image"
+                                         style="transform: scale(${this.pdfZoom}); transform-origin: center top;">
+                                </div>
+                            `;
+                        }
+                    });
+                }
+
+                if (!html) {
+                    html = `
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-exclamation-triangle display-4"></i>
+                            <p class="mt-3">PDF страницы недоступны</p>
+                        </div>
+                    `;
+                }
+
+                pdfViewer.innerHTML = html;
+            }
+
+            displayOcrResults(data) {
+                const ocrResults = document.getElementById('ocr-results');
+                let html = '';
+
+                if (data.pages && data.pages.length > 0) {
+                    data.pages.forEach((page, index) => {
+                        html += `
+                            <div class="mb-4">
+                                <h6>Страница ${index + 1}</h6>
+                                <div class="markdown-content">
+                                    ${marked.parse(page.markdown || 'Нет текста')}
+                                </div>
+                        `;
+
+                        // OCR Images from API
+                        if (page.images && page.images.length > 0) {
+                            html += '<div class="extracted-images">';
+                            page.images.forEach(img => {
+                                if (img.url) {
+                                    html += `<img src="${img.url}" alt="${img.id}" class="extracted-image">`;
+                                }
+                            });
+                            html += '</div>';
+                        }
+
+                        // Fallback extracted images
+                        if (page.fallback_images && page.fallback_images.length > 0) {
+                            html += `
+                                <div class="fallback-images">
+                                    <h6><i class="bi bi-images me-2"></i>Извлеченные изображения</h6>
+                                    <div class="extracted-images">
+                            `;
+                            page.fallback_images.forEach(img => {
+                                const imageName = img.image_path.split('/').pop();
+                                html += `<img src="/image/${imageName}" alt="Извлеченное изображение" class="extracted-image">`;
+                            });
+                            html += '</div></div>';
+                        }
+
+                        html += '</div>';
+                    });
+                }
+
+                if (!html) {
+                    html = `
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-exclamation-triangle display-4"></i>
+                            <p class="mt-3">Результаты OCR недоступны</p>
+                        </div>
+                    `;
+                }
+
+                ocrResults.innerHTML = html;
+                ocrResults.style.transform = `scale(${this.ocrZoom})`;
+                ocrResults.style.transformOrigin = 'center top';
+
+                // Apply syntax highlighting
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+
+            updateStats(data) {
+                const statsContent = document.getElementById('stats-content');
+                let stats = '';
+
+                if (data && data.pages) {
+                    const totalPages = data.pages.length;
+                    let totalImages = 0;
+                    let totalFallbackImages = 0;
+                    let totalText = 0;
+
+                    data.pages.forEach(page => {
+                        if (page.images) totalImages += page.images.length;
+                        if (page.fallback_images) totalFallbackImages += page.fallback_images.length;
+                        if (page.markdown) totalText += page.markdown.length;
+                    });
+
+                    stats = `
+                        <div class="mb-2">
+                            <small class="text-muted">Страниц:</small>
+                            <strong>${totalPages}</strong>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted">Изображений (API):</small>
+                            <strong>${totalImages}</strong>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted">Извлеченных:</small>
+                            <strong>${totalFallbackImages}</strong>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted">Символов текста:</small>
+                            <strong>${totalText.toLocaleString()}</strong>
+                        </div>
+                    `;
+                }
+
+                statsContent.innerHTML = stats;
+            }
+        }
+
+        // Initialize comparison viewer
+        document.addEventListener('DOMContentLoaded', () => {
+            window.comparisonViewer = new ComparisonViewer();
+        });
+
+        // Listen for OCR results from main page
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'lastOcrResults' && e.newValue) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    window.comparisonViewer.displayResults(data);
+                } catch (err) {
+                    console.error('Error handling storage event:', err);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

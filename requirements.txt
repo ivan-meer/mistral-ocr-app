@@ -6,3 +6,5 @@ python-multipart==0.0.9
 requests==2.31.0
 markdown==3.6
 Flask-CORS
+# PyMuPDF==1.23.26  # Закомментировано из-за возможных проблем установки - попробуйте: pip install --only-binary=all PyMuPDF
+Pillow==10.2.0

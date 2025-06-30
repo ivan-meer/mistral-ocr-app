@@ -13,11 +13,29 @@ from urllib.parse import urlparse, unquote
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import mimetypes
+import io
 
 # --- Инициализация и Конфигурация ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
+
+# Опциональный импорт PyMuPDF и Pillow
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+    logger.info("PyMuPDF успешно загружен - fallback извлечение изображений доступно")
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    logger.warning("PyMuPDF не установлен. Fallback извлечение изображений недоступно. Установите: pip install PyMuPDF==1.23.26")
+
+try:
+    from PIL import Image
+    PILLOW_AVAILABLE = True
+    logger.info("Pillow успешно загружен - обработка изображений доступна")
+except ImportError:
+    PILLOW_AVAILABLE = False
+    logger.warning("Pillow не установлен. Обработка изображений ограничена. Установите: pip install Pillow==10.2.0")
 
 app = Flask(__name__)
 CORS(app) # Включаем CORS для всех маршрутов
@@ -67,6 +85,196 @@ def extract_images_from_markdown(markdown_text, page_index):
         logger.info(f"Найдено изображение в markdown: {image_ref} -> {img_filename}")
     
     return extracted_images
+
+def validate_ocr_response(ocr_response):
+    """Валидация ответа OCR для выявления потенциальных проблем (согласно лучшим практикам)."""
+    issues = []
+    total_images = 0
+    valid_images = 0
+    
+    for i, page in enumerate(ocr_response.pages):
+        if page.images:
+            for j, img in enumerate(page.images):
+                total_images += 1
+                img_id = getattr(img, 'id', f'unknown_{j}')
+                base64_data = getattr(img, 'image_base64', None)
+                
+                if not base64_data:
+                    issues.append(f"Страница {i+1}, изображение {img_id}: отсутствуют base64 данные")
+                elif len(base64_data) < 100:
+                    issues.append(f"Страница {i+1}, изображение {img_id}: подозрительно малый размер данных ({len(base64_data)} символов)")
+                else:
+                    valid_images += 1
+            
+            # Проверка ссылок в Markdown
+            import re
+            img_references = re.findall(r'!\[.*?\]\(img-\d+\.jpe?g\)', page.markdown or '')
+            if len(img_references) != len(page.images):
+                issues.append(f"Страница {i+1}: несоответствие количества ссылок ({len(img_references)}) и изображений ({len(page.images)})")
+    
+    logger.info(f"Валидация OCR: {valid_images}/{total_images} изображений валидны")
+    for issue in issues:
+        logger.warning(f"Проблема валидации: {issue}")
+    
+    return {
+        'total_images': total_images,
+        'valid_images': valid_images,
+        'issues': issues,
+        'success_rate': (valid_images / total_images * 100) if total_images > 0 else 0
+    }
+
+def enhanced_base64_processing(base64_data, img_id):
+    """Улучшенная обработка base64 данных с проверками."""
+    if not base64_data:
+        return None
+    
+    try:
+        # Безопасное удаление префикса (рекомендуемый подход)
+        if "base64," in base64_data:
+            clean_data = base64_data.split("base64,", 1)[1]
+        else:
+            clean_data = base64_data
+        
+        # Определение формата изображения
+        img_format = "png"  # fallback
+        if "image/png" in base64_data:
+            img_format = "png"
+        elif "image/jpeg" in base64_data or "image/jpg" in base64_data:
+            img_format = "jpg"
+        elif "image/webp" in base64_data:
+            img_format = "webp"
+        
+        # Декодирование с проверкой
+        img_data = base64.b64decode(clean_data)
+        
+        # Проверка минимального размера (защита от поврежденных данных)
+        if len(img_data) < 50:  # менее 50 байт подозрительно
+            logger.warning(f"Изображение {img_id}: подозрительно малый размер после декодирования ({len(img_data)} байт)")
+            return None
+        
+        return {
+            'data': img_data,
+            'format': img_format,
+            'size': len(img_data)
+        }
+    
+    except Exception as e:
+        logger.error(f"Ошибка декодирования base64 для {img_id}: {e}")
+        return None
+
+def create_svg_placeholder(filename, image_id, width, height):
+    """Создает и сохраняет SVG-плейсхолдер для изображения без данных."""
+    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+        <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" stroke-width="1"/>
+            </pattern>
+        </defs>
+        <rect width="{width}" height="{height}" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+        <rect width="{width}" height="{height}" fill="url(#grid)" opacity="0.3"/>
+        <text x="{width//2}" y="{height//2+20}" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="18" font-weight="bold">
+            Изображение из документа
+        </text>
+        <text x="{width//2}" y="{height//2+45}" text-anchor="middle" fill="#64748b" font-family="Arial, sans-serif" font-size="14">
+            {image_id}
+        </text>
+        <text x="{width//2}" y="{height//2+65}" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="12">
+            (Base64 данные недоступны в API)
+        </text>
+    </svg>'''
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(svg_content)
+    return filepath
+
+def extract_pdf_pages_as_images(pdf_path, dpi=200):
+    """Конвертирует страницы PDF в изображения для сравнения с результатами OCR."""
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF недоступен. Установите: pip install PyMuPDF==1.23.26")
+        return []
+    
+    try:
+        doc = fitz.open(pdf_path)
+        page_images = []
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            # Создаем изображение страницы с высоким разрешением
+            mat = fitz.Matrix(dpi/72, dpi/72)  # Матрица масштабирования
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Сохраняем как PNG
+            img_filename = f"pdf_page_{page_num}.png"
+            img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
+            pix.save(img_path)
+            
+            page_images.append({
+                'page_num': page_num,
+                'image_path': img_path,
+                'width': pix.width,
+                'height': pix.height
+            })
+            logger.info(f"Конвертирована страница {page_num}: {img_path} ({pix.width}x{pix.height})")
+        
+        doc.close()
+        return page_images
+    except Exception as e:
+        logger.error(f"Ошибка конвертации PDF в изображения: {e}")
+        return []
+
+def extract_images_from_pdf(pdf_path):
+    """Извлекает встроенные изображения напрямую из PDF (как fallback для Mistral OCR)."""
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF недоступен. Установите: pip install PyMuPDF==1.23.26")
+        return []
+    
+    try:
+        doc = fitz.open(pdf_path)
+        extracted_images = []
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            image_list = page.get_images()
+            
+            for img_index, img in enumerate(image_list):
+                # Получаем изображение
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                
+                if pix.n - pix.alpha < 4:  # Проверяем что это не CMYK
+                    # Сохраняем изображение
+                    img_filename = f"extracted_page_{page_num}_img_{img_index}.png"
+                    img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
+                    
+                    if pix.alpha:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    
+                    pix.save(img_path)
+                    
+                    # Получаем координаты изображения на странице
+                    rects = page.get_image_rects(xref)
+                    bbox = rects[0] if rects else page.rect
+                    
+                    extracted_images.append({
+                        'page_num': page_num,
+                        'image_index': img_index,
+                        'image_path': img_path,
+                        'width': pix.width,
+                        'height': pix.height,
+                        'bbox': {
+                            'x0': bbox.x0, 'y0': bbox.y0,
+                            'x1': bbox.x1, 'y1': bbox.y1
+                        }
+                    })
+                    logger.info(f"Извлечено изображение: страница {page_num}, индекс {img_index}")
+                
+                pix = None  # Освобождаем память
+        
+        doc.close()
+        return extracted_images
+    except Exception as e:
+        logger.error(f"Ошибка извлечения изображений из PDF: {e}")
+        return []
 
 def handle_google_drive_url(url):
     """Преобразует URL Google Drive в прямой URL для скачивания."""
@@ -208,8 +416,11 @@ def mistral_ocr_processing(file_path, include_images=True):
             document={"type": "document_url", "document_url": signed_url.url},
             include_image_base64=include_images
         )
-        # FIXED: Добавляем детальное логирование ответа API с защитой от None
+        # ENHANCED: Валидация ответа согласно лучшим практикам
+        validation_result = validate_ocr_response(ocr_response)
         logger.info(f"Получен ответ от Mistral OCR API. Страниц: {len(ocr_response.pages)}")
+        logger.info(f"Результаты валидации: {validation_result['valid_images']}/{validation_result['total_images']} изображений валидны ({validation_result['success_rate']:.1f}%)")
+        
         for i, page in enumerate(ocr_response.pages):
             logger.info(f"Страница {i}: изображений в API ответе: {len(page.images) if page.images else 0}")
             if page.images:
@@ -244,39 +455,62 @@ def mistral_ocr_processing(file_path, include_images=True):
                     img_id = getattr(img, 'id', f'img_{len(page_data["images"])}')
                     
                     if not base64_data:
-                        logger.warning(f"Изображение {img_id} не содержит base64 данных, используем координаты")
-                        # Создаем изображение с координатами вместо base64
+                        logger.warning(f"Изображение {img_id} не содержит base64 данных. Создаем SVG-плейсхолдер.")
+                        # Дополнительная диагностика
+                        file_size = os.path.getsize(file_path) / (1024*1024)  # МБ
+                        logger.info(f"Диагностика изображения {img_id}: файл {file_size:.1f}МБ, MIME: {mime_type}")
+                        logger.info(f"Возможные причины: 1) Векторная графика 2) Защищенный PDF 3) Специальная компрессия 4) API limitation")
+                        # Создаем плейсхолдер с координатами
                         coordinates = {
                             'top_left_x': getattr(img, 'top_left_x', 0),
                             'top_left_y': getattr(img, 'top_left_y', 0),
-                            'bottom_right_x': getattr(img, 'bottom_right_x', 0),
-                            'bottom_right_y': getattr(img, 'bottom_right_y', 0)
+                            'bottom_right_x': getattr(img, 'bottom_right_x', 600),
+                            'bottom_right_y': getattr(img, 'bottom_right_y', 400)
                         }
                         width = coordinates['bottom_right_x'] - coordinates['top_left_x']
                         height = coordinates['bottom_right_y'] - coordinates['top_left_y']
                         
+                        # Используем безопасные размеры для плейсхолдера
+                        placeholder_width = width if width > 0 else 600
+                        placeholder_height = height if height > 0 else 400
+                        
+                        placeholder_filename = f"placeholder_{page.index}_{img_id}.svg"
+                        # Создаем SVG плейсхолдер с помощью новой функции
+                        img_path = create_svg_placeholder(placeholder_filename, img_id, placeholder_width, placeholder_height)
+                        
                         page_data["images"].append({
                             "id": img_id,
-                            "path": None,
+                            "path": img_path,  # Теперь path будет всегда указан
                             "image_base64": None,
                             "coordinates": coordinates,
-                            "width": width,
-                            "height": height,
+                            "width": placeholder_width,
+                            "height": placeholder_height,
                             "alt_text": f"Изображение {img_id}"
                         })
-                        logger.info(f"Добавлено изображение с координатами: {img_id} ({width}x{height})")
+                        logger.info(f"Создан SVG плейсхолдер: {placeholder_filename} ({placeholder_width}x{placeholder_height})")
                         continue
                     
-                    if base64_data.startswith('data:image'):
-                        # Если есть MIME префикс, извлекаем только base64 часть
-                        base64_data = base64_data.split(',')[1]
-                    
-                    img_data = base64.b64decode(base64_data)
-                    img_id = getattr(img, 'id', f'img_{len(page_data["images"])}')
-                    img_filename = f"page_{page.index}_img_{img_id}.png"
-                    img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
-                    with open(img_path, "wb") as img_file:
-                        img_file.write(img_data)
+                    # ENHANCED: Используем улучшенную обработку base64 согласно лучшим практикам
+                    processed_img = enhanced_base64_processing(base64_data, img_id)
+                    if not processed_img:
+                        logger.warning(f"Не удалось обработать base64 данные для {img_id}, создаем placeholder")
+                        # Fallback к созданию placeholder
+                        coordinates = {
+                            'top_left_x': getattr(img, 'top_left_x', 0),
+                            'top_left_y': getattr(img, 'top_left_y', 0),
+                            'bottom_right_x': getattr(img, 'bottom_right_x', 600),
+                            'bottom_right_y': getattr(img, 'bottom_right_y', 400)
+                        }
+                        width = coordinates['bottom_right_x'] - coordinates['top_left_x']
+                        height = coordinates['bottom_right_y'] - coordinates['top_left_y']
+                        placeholder_filename = f"placeholder_{page.index}_{img_id}.svg"
+                        img_path = create_svg_placeholder(placeholder_filename, img_id, width if width > 0 else 600, height if height > 0 else 400)
+                    else:
+                        img_filename = f"page_{page.index}_img_{img_id}.{processed_img['format']}"
+                        img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
+                        with open(img_path, "wb") as img_file:
+                            img_file.write(processed_img['data'])
+                        logger.info(f"Сохранено изображение: {img_filename} ({processed_img['size']} байт)")
                     
                     page_data["images"].append({
                         "id": img_id, 
@@ -327,6 +561,41 @@ def mistral_ocr_processing(file_path, include_images=True):
             page_data["markdown"] = updated_markdown
         
         processed_pages.append(page_data)
+
+    # ENHANCED: Fallback извлечение изображений из PDF если API не вернул base64
+    if include_images and file_path.lower().endswith('.pdf'):
+        logger.info(f"Проверка fallback: PyMuPDF={PYMUPDF_AVAILABLE}, Pillow={PILLOW_AVAILABLE}")
+        if PYMUPDF_AVAILABLE:
+            logger.info("Выполняем fallback извлечение изображений из PDF")
+        else:
+            logger.warning("PyMuPDF недоступен - fallback извлечение пропущено")
+            
+    if include_images and file_path.lower().endswith('.pdf') and PYMUPDF_AVAILABLE:
+        
+        # Извлекаем страницы PDF как изображения для сравнения
+        pdf_page_images = extract_pdf_pages_as_images(file_path)
+        
+        # Извлекаем встроенные изображения напрямую из PDF
+        pdf_extracted_images = extract_images_from_pdf(file_path)
+        
+        # Добавляем информацию о страницах PDF к результату
+        for i, page_data in enumerate(processed_pages):
+            # Добавляем изображение страницы PDF
+            if i < len(pdf_page_images):
+                page_img = pdf_page_images[i]
+                page_data['pdf_page_image'] = {
+                    'path': page_img['image_path'],
+                    'width': page_img['width'],
+                    'height': page_img['height']
+                }
+            
+            # Добавляем извлеченные изображения для этой страницы
+            page_extracted = [img for img in pdf_extracted_images if img['page_num'] == i]
+            if page_extracted:
+                if 'fallback_images' not in page_data:
+                    page_data['fallback_images'] = []
+                page_data['fallback_images'].extend(page_extracted)
+                logger.info(f"Добавлено {len(page_extracted)} fallback изображений для страницы {i}")
 
     return {"document_url": signed_url.url, "pages": processed_pages}
 
@@ -552,7 +821,7 @@ def serve_markdown_image(image_path):
         from flask import abort
         abort(404)
     
-    logger.info(f"Запрос к markdown изображению: {image_path}")
+    logger.info(f"Запрос к markdown изображению: {image_path} - создаем профессиональный SVG placeholder")
     
     # Создаем улучшенный placeholder SVG для изображений из markdown
     from flask import Response
@@ -720,6 +989,27 @@ def api_get_json():
     include_images_str = request.args.get('include_images', 'true').lower()
     include_images = include_images_str == 'true'
     return process_api_request(url, 'json', include_images)
+
+@app.route('/compare')
+def compare_results():
+    """Показывает страницу сравнения оригинального PDF с результатами OCR."""
+    return render_template('compare.html')
+
+@app.route('/pdf_page/<filename>')
+def serve_pdf_page(filename):
+    """Отдает изображения страниц PDF для сравнения."""
+    try:
+        pdf_page_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        if os.path.exists(pdf_page_path):
+            return send_file(pdf_page_path, mimetype='image/png')
+        else:
+            logger.warning(f"PDF страница не найдена: {filename}")
+            from flask import abort
+            abort(404)
+    except Exception as e:
+        logger.error(f"Ошибка отдачи PDF страницы {filename}: {e}")
+        from flask import abort
+        abort(500)
 
 
 # --- Запуск приложения ---

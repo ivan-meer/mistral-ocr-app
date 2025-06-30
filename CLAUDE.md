@@ -115,9 +115,40 @@ mistral-ocr-app/
 - Responsive design with mobile-first approach
 - Progressive enhancement with JavaScript
 
-## Recent Fixes (v2.0.6)
+## Recent Fixes (v2.0.8)
 
-### Correct Markdown Image Link Processing
+### Major Enhancement - PDF Comparison Mode with Fallback Image Extraction
+**Issue**: Need to see actual graphics and charts when Mistral API doesn't provide base64 data
+**Solution**: Comprehensive PDF comparison system with multiple image extraction methods
+
+**Key Changes**:
+- `requirements.txt` - Added PyMuPDF==1.23.26 and Pillow==10.2.0 for PDF processing
+- `app.py:99-178` - New functions: `extract_pdf_pages_as_images()` and `extract_images_from_pdf()`
+- `app.py:452-481` - Enhanced `mistral_ocr_processing()` with fallback image extraction
+- `templates/compare.html` - New side-by-side comparison interface
+- `app.py:874-893` - New routes: `/compare` and `/pdf_page/<filename>`
+- `templates/index.html:44-46,501-516` - Integration with comparison mode and result storage
+
+**Features**:
+- **PDF Page Conversion**: Full pages rendered as PNG images for accurate visual comparison
+- **Direct Image Extraction**: Embedded images extracted directly from PDF using PyMuPDF
+- **Dual Extraction Pipeline**: Mistral API results + PDF fallback images
+- **Interactive Comparison**: Side-by-side view with independent zoom controls
+- **Real-time Statistics**: Image count, extraction success rates, document analysis
+
+### Previous Fix (v2.0.7) - Critical Image Display Fix
+**Issue**: Images with empty base64 data not displaying despite API detection  
+**Root Cause**: Backend saved image metadata with `path: None`, causing frontend to show generic "image unavailable" message
+**Solution**: Always create SVG placeholder files for images without base64 data
+
+**Key Changes**:
+- `app.py:71-94` - New `create_svg_placeholder()` function for generating informative SVG files
+- `app.py:271-301` - Updated `mistral_ocr_processing()` to create placeholder files instead of null paths
+- Enhanced placeholder with grid pattern, coordinates, and metadata
+- Frontend now always receives a valid file path (real image or SVG placeholder)
+- Consistent user experience regardless of API base64 data availability
+
+### Previous Fix (v2.0.6) - Markdown Image Link Processing
 **Issue**: Images detected by API but not properly linked in markdown output
 **Solution**: Proper markdown link replacement according to Mistral OCR documentation
 

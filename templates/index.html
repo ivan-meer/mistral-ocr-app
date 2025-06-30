@@ -41,6 +41,9 @@
                     <p class="app-subtitle mb-0">PDF в Markdown/JSON Конвертер</p>
                 </div>
                 <div class="d-flex gap-2">
+                    <a href="/compare" class="btn btn-outline-light btn-sm" title="Режим сравнения" target="_blank">
+                        <i class="bi bi-columns-gap me-1"></i>Сравнение
+                    </a>
                     <!-- TODO: Add theme switcher -->
                     <!-- <button class="btn btn-outline-light btn-sm" id="theme-toggle" title="Переключить тему">
                         <i class="bi bi-moon-fill"></i>
@@ -495,16 +498,22 @@
                         currentDocumentData = data.data;
                         resultsContainer.style.display = 'block';
                         
+                        // ENHANCED: Сохраняем результаты для режима сравнения
+                        localStorage.setItem('lastOcrResults', JSON.stringify(data.data));
+                        
                         // FIXED: Добавляем отладочную информацию
                         console.info('OCR результат получен:', data.data);
                         console.info('Количество страниц:', data.data.pages.length);
                         
                         // Подсчитываем изображения
                         let totalImages = 0;
+                        let totalFallbackImages = 0;
                         data.data.pages.forEach(page => {
                             if (page.images) totalImages += page.images.length;
+                            if (page.fallback_images) totalFallbackImages += page.fallback_images.length;
                         });
                         console.info('Общее количество изображений:', totalImages);
+                        console.info('Извлеченных изображений (fallback):', totalFallbackImages);
                         
                         // Scroll to results
                         resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -597,6 +606,67 @@
                                 });
                                 
                                 pageDiv.appendChild(imagesContainer);
+                            }
+
+                            // ENHANCED: Отображение fallback изображений (извлеченных напрямую из PDF)
+                            if (page.fallback_images && page.fallback_images.length > 0) {
+                                const fallbackTitle = document.createElement('h6');
+                                fallbackTitle.innerHTML = '<i class="bi bi-images me-2"></i>Извлеченные изображения из PDF';
+                                fallbackTitle.classList.add('mt-4', 'mb-3', 'text-warning');
+                                pageDiv.appendChild(fallbackTitle);
+
+                                const fallbackContainer = document.createElement('div');
+                                fallbackContainer.classList.add('row');
+
+                                page.fallback_images.forEach((fallbackImg, fallbackIndex) => {
+                                    const fallbackWrapper = document.createElement('div');
+                                    fallbackWrapper.classList.add('col-md-6', 'col-lg-4', 'mb-3');
+                                    
+                                    const fallbackCard = document.createElement('div');
+                                    fallbackCard.classList.add('card', 'bg-dark', 'border-warning');
+                                    
+                                    const fallbackImgElem = document.createElement('img');
+                                    fallbackImgElem.classList.add('card-img-top', 'img-fluid');
+                                    fallbackImgElem.alt = `Извлеченное изображение ${fallbackIndex + 1}`;
+                                    fallbackImgElem.loading = 'lazy';
+                                    
+                                    // Путь к изображению
+                                    const imageName = fallbackImg.image_path.split(/[\\/]/).pop();
+                                    fallbackImgElem.src = `/image/${imageName}`;
+                                    
+                                    // Обработчик клика для увеличения
+                                    fallbackImgElem.addEventListener('click', () => {
+                                        openImageModal(fallbackImgElem.src, fallbackImgElem.alt);
+                                    });
+                                    
+                                    // Карточка с информацией
+                                    const cardBody = document.createElement('div');
+                                    cardBody.classList.add('card-body', 'p-2');
+                                    cardBody.innerHTML = `
+                                        <small class="text-warning">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            ${fallbackImg.width}×${fallbackImg.height}px
+                                        </small>
+                                    `;
+                                    
+                                    fallbackCard.appendChild(fallbackImgElem);
+                                    fallbackCard.appendChild(cardBody);
+                                    fallbackWrapper.appendChild(fallbackCard);
+                                    fallbackContainer.appendChild(fallbackWrapper);
+                                });
+
+                                pageDiv.appendChild(fallbackContainer);
+                                
+                                // Добавляем пояснение
+                                const explanation = document.createElement('div');
+                                explanation.classList.add('alert', 'alert-info', 'mt-3');
+                                explanation.innerHTML = `
+                                    <i class="bi bi-lightbulb me-2"></i>
+                                    <strong>Что это:</strong> Эти изображения извлечены напрямую из PDF, 
+                                    так как Mistral OCR API не предоставил base64 данные. 
+                                    Для лучшего сравнения используйте <strong>режим сравнения</strong>.
+                                `;
+                                pageDiv.appendChild(explanation);
                             }
 
                             pagesContainer.appendChild(pageDiv);
