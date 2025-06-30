@@ -125,7 +125,10 @@ def mock_ocr_processing(file_path, include_images=True):
     if include_images:
         demo_img_filename = f"demo_image_{os.urandom(4).hex()}.png"
         # FIXED: Создаем реальный файл изображения для демо-режима
-        demo_img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(demo_img_filename))
+        # Применяем secure_filename здесь, чтобы имя файла было "чистым" с самого начала
+        secured_demo_img_filename = secure_filename(demo_img_filename)
+        demo_img_path = os.path.join(app.config['UPLOAD_FOLDER'], secured_demo_img_filename)
+        logger.info(f"[MOCK_OCR] Планируемый путь к демо-изображению: {demo_img_path}")
         
         # Создаем простое демо-изображение (красный квадрат 100x100)
         import base64
@@ -138,22 +141,25 @@ def mock_ocr_processing(file_path, include_images=True):
             img_data = base64.b64decode(demo_img_b64_data)
             with open(demo_img_path, "wb") as img_file:
                 img_file.write(img_data)
+            logger.info(f"[MOCK_OCR] Демо-изображение успешно записано в: {demo_img_path}")
             
             demo_images.append({
                 "id": "demo_img_1", 
                 "path": demo_img_path,  # Полный путь к файлу
                 "image_base64": f"data:image/png;base64,{demo_img_b64_data}"
             })
-            logger.info(f"Создано демо-изображение: {demo_img_path}")
+            logger.info(f"[MOCK_OCR] Данные демо-изображения добавлены: id=demo_img_1, path={demo_img_path}")
         except Exception as e:
-            logger.error(f"Ошибка создания демо-изображения: {e}")
-            # Fallback: создаем запись без файла
+            logger.error(f"[MOCK_OCR] Ошибка создания демо-изображения: {e}")
+            # Fallback: создаем запись без файла, но с тем же именем, которое было бы у файла
             demo_images.append({
                 "id": "demo_img_1", 
-                "path": demo_img_filename,
+                "path": demo_img_path, # Используем demo_img_path даже если файл не создан, для консистентности
+                "original_filename_if_failed": secured_demo_img_filename, # Доп. инфо для отладки
                 "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
             })
     
+    logger.info(f"[MOCK_OCR] Возвращаемые demo_images: {json.dumps(demo_images, indent=2)}")
     mock_pages = [
         {
             "index": 0,
@@ -305,26 +311,39 @@ def mistral_ocr_processing(file_path, include_images=True):
                 # Ищем соответствующее изображение из API данных по ID
                 api_image = None
                 for img_data in page_data["images"]:
-                    if img_data.get("id") == md_img['id']:
-                        api_image = img_data
-                        break
-                
-                if api_image and api_image.get("path"):
-                    # Если есть сохраненный файл, используем его URL
-                    img_filename = secure_filename(os.path.basename(api_image['path']))
-                    new_url = f"/image/{img_filename}"
-                    logger.info(f"Заменяем {md_img['original_ref']} на {new_url}")
-                    updated_markdown = updated_markdown.replace(
-                        md_img['markdown_pattern'],
-                        f"![{md_img['alt_text']}]({new_url})"
-                    )
+                    # Attempt to match by ID first (if md_img has a meaningful ID extracted from ref)
+                    # However, the primary strategy will be order-based matching for robustness.
+                    # The md_img['id'] is currently the image_ref itself, which might not be a simple API ID.
+                    pass # Current ID matching is likely insufficient.
+
+            # Order-based matching:
+            # Assume the k-th image tag in markdown corresponds to the k-th image in page.images from API
+            saved_api_images_for_page = [img for img in page_data["images"] if img.get("path")]
+
+            logger.info(f"[MISTRAL_OCR] Найдено {len(markdown_images)} ссылок на изображения в Markdown для стр. {page.index}.")
+            logger.info(f"[MISTRAL_OCR] Сохранено {len(saved_api_images_for_page)} изображений из API base64 для стр. {page.index}.")
+
+            temp_updated_markdown = page.markdown # Start with original markdown for this page
+
+            for k, md_img in enumerate(markdown_images):
+                if k < len(saved_api_images_for_page):
+                    api_image_data = saved_api_images_for_page[k]
+                    img_filename_on_disk = os.path.basename(api_image_data['path'])
+                    # We already secured the filename when saving, so no need for secure_filename() here again.
+                    new_url = f"/image/{img_filename_on_disk}"
+
+                    logger.info(f"[MISTRAL_OCR] Замена (по порядку) MD ссылки {k+1}: '{md_img['markdown_pattern']}' -> '![{md_img['alt_text']}]({new_url})'")
+
+                    # Replace only the first occurrence of the pattern to avoid issues if multiple identical image refs exist
+                    # and should map to different API images (though less likely for typical OCR output).
+                    # A more robust way would be to parse markdown structure, but regex replace is used here.
+                    # Ensure md_img['markdown_pattern'] is properly escaped for regex if it contains special characters.
+                    # For now, direct string replacement of the exact pattern:
+                    temp_updated_markdown = temp_updated_markdown.replace(md_img['markdown_pattern'], f"![{md_img['alt_text']}]({new_url})", 1)
                 else:
-                    # Если нет файла, используем наш роут для placeholder
-                    logger.info(f"Используем placeholder роут для {md_img['original_ref']}")
-                    # Markdown уже содержит правильную ссылку, наш роут обработает её
+                    logger.warning(f"[MISTRAL_OCR] Нет соответствующего API изображения (по порядку) для MD ссылки {k+1}: '{md_img['markdown_pattern']}'. Будет использован placeholder.")
             
-            # Обновляем markdown в данных страницы
-            page_data["markdown"] = updated_markdown
+            page_data["markdown"] = temp_updated_markdown
         
         processed_pages.append(page_data)
 
@@ -463,16 +482,28 @@ def upload_document_route():
 
         # FIXED: Улучшенная обработка путей к изображениям для фронтенда
         total_images = 0
-        for page in result.get('pages', []):
+        for page_idx, page in enumerate(result.get('pages', [])):
             if page.get('images'):
-                for img_info in page['images']:
+                logger.info(f"[UPLOAD_ROUTE] Обработка изображений для страницы {page_idx}")
+                for img_idx, img_info in enumerate(page['images']):
                     total_images += 1
+                    logger.info(f"[UPLOAD_ROUTE] Изображение {img_idx} на странице {page_idx}: исходные данные: {json.dumps(img_info)}")
                     if img_info.get('path'):
-                        img_filename = secure_filename(os.path.basename(img_info['path']))
-                        img_info['url'] = f"/image/{img_filename}"
-                        logger.info(f"Создан URL для изображения: {img_info['url']}")
+                        original_path = img_info['path']
+                        logger.info(f"[UPLOAD_ROUTE] Наличие пути к изображению: {original_path}")
+
+                        base_name = os.path.basename(original_path)
+                        logger.info(f"[UPLOAD_ROUTE] Имя файла из пути: {base_name}")
+
+                        secured_img_filename = secure_filename(base_name)
+                        logger.info(f"[UPLOAD_ROUTE] Имя файла после secure_filename: {secured_img_filename}")
+
+                        img_info['url'] = f"/image/{secured_img_filename}"
+                        logger.info(f"[UPLOAD_ROUTE] Сгенерированный URL для изображения: {img_info['url']}")
+                    else:
+                        logger.warning(f"[UPLOAD_ROUTE] Изображение {img_idx} на странице {page_idx} не имеет 'path'. Данные: {json.dumps(img_info)}")
         
-        logger.info(f"Обработка завершена. Всего изображений: {total_images}")
+        logger.info(f"Обработка завершена. Всего изображений: {total_images}. Финальные данные для ответа: {json.dumps(result, indent=2)}")
         return jsonify({"status": "success", "data": result})
 
     except ValueError as e: # Ожидаемые ошибки (URL, файл, API)
@@ -521,13 +552,24 @@ def download_file_route(filetype, filename):
 def serve_image_route(filename):
     """Отдает изображение."""
     # FIXED: Изображения теперь корректно создаются в демо-режиме
+    logger.info(f"[SERVE_IMAGE] Запрос на обслуживание изображения. Получен filename: '{filename}'")
     
-    secure_fname = secure_filename(filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
+    # Важно: filename из URL уже должен быть "защищенным", если он был правильно создан в /upload
+    # Повторное применение secure_filename здесь не должно ничего менять, если имя уже безопасное.
+    # Однако, если по какой-то причине имя в URL не было защищено, это его защитит.
+    # Для отладки посмотрим, меняет ли что-то secure_filename.
+    s_filename_check = secure_filename(filename)
+    if s_filename_check != filename:
+        logger.warning(f"[SERVE_IMAGE] Имя файла '{filename}' было изменено secure_filename на '{s_filename_check}'. Это может указывать на проблему в URL.")
+
+    # Используем s_filename_check для построения пути, так как это гарантированно безопасное имя.
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], s_filename_check)
+    logger.info(f"[SERVE_IMAGE] UPLOAD_FOLDER: {app.config['UPLOAD_FOLDER']}")
+    logger.info(f"[SERVE_IMAGE] Полный путь к файлу для обслуживания: {filepath}")
 
     # Проверяем существование файла
     if not os.path.exists(filepath):
-        logger.warning(f"Запрошенное изображение не найдено: {filepath}")
+        logger.warning(f"[SERVE_IMAGE] Файл НЕ НАЙДЕН по пути: {filepath}")
         # Создаем простое placeholder изображение если файл не найден
         from flask import Response
         svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">
