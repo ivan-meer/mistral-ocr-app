@@ -98,11 +98,35 @@ def mock_ocr_processing(file_path, include_images=True):
     demo_images = []
     if include_images:
         demo_img_filename = f"demo_image_{os.urandom(4).hex()}.png"
-        demo_images.append({
-            "id": "demo_img_1", 
-            "path": demo_img_filename,  # Используем только имя файла
-            "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-        })
+        # FIXED: Создаем реальный файл изображения для демо-режима
+        demo_img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(demo_img_filename))
+        
+        # Создаем простое демо-изображение (красный квадрат 100x100)
+        import base64
+        from io import BytesIO
+        try:
+            # Простое PNG изображение (красный квадрат 100x100) в base64
+            demo_img_b64_data = "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABYSURBVBiVY2CgAzAyMjL8//+fARuYNGkSAzYwceJEBmxg7NixDNjA6NGjGbCBESNGMGADw4YNY8AGhg4dyoANDBkyRKhw0KBBQoWDBw8WKhw4cKBQ4YABA4QKAQAAMzAXfce1lQAAAABJRU5ErkJggg=="
+            
+            # Декодируем и сохраняем изображение
+            img_data = base64.b64decode(demo_img_b64_data)
+            with open(demo_img_path, "wb") as img_file:
+                img_file.write(img_data)
+            
+            demo_images.append({
+                "id": "demo_img_1", 
+                "path": demo_img_path,  # Полный путь к файлу
+                "image_base64": f"data:image/png;base64,{demo_img_b64_data}"
+            })
+            logger.info(f"Создано демо-изображение: {demo_img_path}")
+        except Exception as e:
+            logger.error(f"Ошибка создания демо-изображения: {e}")
+            # Fallback: создаем запись без файла
+            demo_images.append({
+                "id": "demo_img_1", 
+                "path": demo_img_filename,
+                "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            })
     
     mock_pages = [
         {
@@ -215,18 +239,23 @@ def save_results_to_files(result_data, upload_folder, include_images=True):
             if include_images and page.get('images'):
                 for img_info in page['images']:
                     img_path = img_info.get('path')
-                    # Если это моковый режим и путь не существует, используем base64 напрямую
-                    if app.config['USE_MOCK_OCR'] and img_info.get('image_base64') and not (img_path and os.path.exists(img_path)):
-                        image_data_b64 = img_info['image_base64']
-                        if not image_data_b64.startswith('data:image'):
-                             image_data_b64 = f"data:image/png;base64,{image_data_b64.split(',')[-1]}" # Убедимся что есть префикс
-                        page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64.split(',')[-1]})\n\n"
-                    elif img_path and os.path.exists(img_path):
+                    # FIXED: Исправлена обработка изображений для корректного отображения
+                    if img_path and os.path.exists(img_path):
+                        # Если файл существует, читаем его и встраиваем в markdown
                         with open(img_path, "rb") as image_file:
                             image_data_b64 = base64.b64encode(image_file.read()).decode('utf-8')
                         page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64})\n\n"
+                    elif app.config['USE_MOCK_OCR'] and img_info.get('image_base64'):
+                        # Для демо-режима используем готовый base64
+                        image_data_b64 = img_info['image_base64']
+                        if image_data_b64.startswith('data:image'):
+                            # Если уже есть префикс, используем как есть
+                            page_markdown += f"\n\n![image]({image_data_b64})\n\n"
+                        else:
+                            # Добавляем префикс если его нет
+                            page_markdown += f"\n\n![image](data:image/png;base64,{image_data_b64})\n\n"
                     else:
-                        logger.warning(f"Изображение не найдено по пути: {img_path} для страницы {page.get('index')}")
+                        logger.warning(f"Изображение не найдено: {img_path} для страницы {page.get('index')}")
 
             markdown_content_pages.append(page_markdown)
 
@@ -361,28 +390,24 @@ def download_file_route(filetype, filename):
 @app.route('/image/<filename>')
 def serve_image_route(filename):
     """Отдает изображение."""
-    # TODO: Исправить проблему с отображением изображений в результатах OCR
-    # FIXME: Изображения не отображаются в демо-режиме - нужно проверить пути и создание файлов
-    # Проблема: В демо-режиме изображения создаются с неправильными путями или не создаются вообще
-    # Решение: Нужно убедиться, что демо-изображения сохраняются в правильную папку с правильными именами
+    # FIXED: Изображения теперь корректно создаются в демо-режиме
     
     secure_fname = secure_filename(filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
 
-    # Для демо-режима создаем placeholder изображение
+    # Проверяем существование файла
     if not os.path.exists(filepath):
-        logger.warning(f"Запрошенное изображение не найдено: {filepath}, создаем placeholder")
-        # FIXME: Временное решение - создаем SVG placeholder вместо реальных изображений
-        # TODO: Исправить создание и сохранение демо-изображений в mock_ocr_processing()
+        logger.warning(f"Запрошенное изображение не найдено: {filepath}")
+        # Создаем простое placeholder изображение если файл не найден
         from flask import Response
         svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">
             <rect width="300" height="200" fill="#334155"/>
-            <text x="150" y="100" text-anchor="middle" fill="#cbd5e1" font-family="Arial" font-size="14">Демо изображение</text>
+            <text x="150" y="100" text-anchor="middle" fill="#cbd5e1" font-family="Arial" font-size="14">Изображение не найдено</text>
             <text x="150" y="120" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{}</text>
         </svg>'''.format(filename)
         return Response(svg_content, mimetype='image/svg+xml')
 
-    # Определяем MIME-тип изображения (хотя обычно это png)
+    # Определяем MIME-тип изображения
     mime_type, _ = mimetypes.guess_type(filepath)
     mime_type = mime_type or 'image/png' # По умолчанию png
 
