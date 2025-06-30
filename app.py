@@ -93,20 +93,30 @@ def mock_ocr_processing(file_path, include_images=True):
     """Имитация ответа OCR API для демонстрационного режима."""
     logger.info(f"Использование мокового OCR для файла: {file_path}")
     base_filename = os.path.basename(file_path)
+    
+    # Создаем демо изображения с правильными путями
+    demo_images = []
+    if include_images:
+        demo_img_filename = f"demo_image_{os.urandom(4).hex()}.png"
+        demo_images.append({
+            "id": "demo_img_1", 
+            "path": demo_img_filename,  # Используем только имя файла
+            "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        })
+    
     mock_pages = [
         {
             "index": 0,
-            "markdown": f"# Страница 1 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со **страницы 1**.",
+            "markdown": f"# Страница 1 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со **страницы 1**.\n\nДанная страница демонстрирует возможности OCR обработки текста.",
             "images": []
         },
         {
             "index": 1,
-            "markdown": f"# Страница 2 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со *страницы 2*.\n\n![демо_изображение](placeholder.png)",
-            "images": [
-                {"id": "mock_img_1", "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="} # 1x1 pixel black
-            ] if include_images else []
+            "markdown": f"# Страница 2 Демо Документа ({base_filename})\n\nЭто демонстрационный текст со *страницы 2*.\n\nНа этой странице показано извлечение изображений из документа.",
+            "images": demo_images
         }
     ]
+    
     # Имитация сохранения файлов
     mock_md_filename = f"mock_ocr_{os.urandom(8).hex()}.md"
     mock_json_filename = f"mock_ocr_{os.urandom(8).hex()}.json"
@@ -354,9 +364,17 @@ def serve_image_route(filename):
     secure_fname = secure_filename(filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
 
-    if not os.path.exists(filepath) or not secure_fname.startswith('page_'): # Доп. проверка безопасности
-        logger.warning(f"Запрошенное изображение не найдено или доступ запрещен: {filepath}")
-        return jsonify({"status": "error", "message": "Изображение не найдено"}), 404
+    # Для демо-режима создаем placeholder изображение
+    if not os.path.exists(filepath):
+        logger.warning(f"Запрошенное изображение не найдено: {filepath}, создаем placeholder")
+        # Создаем простое SVG изображение как placeholder
+        from flask import Response
+        svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">
+            <rect width="300" height="200" fill="#334155"/>
+            <text x="150" y="100" text-anchor="middle" fill="#cbd5e1" font-family="Arial" font-size="14">Демо изображение</text>
+            <text x="150" y="120" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{}</text>
+        </svg>'''.format(filename)
+        return Response(svg_content, mimetype='image/svg+xml')
 
     # Определяем MIME-тип изображения (хотя обычно это png)
     mime_type, _ = mimetypes.guess_type(filepath)
