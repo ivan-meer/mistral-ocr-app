@@ -361,13 +361,19 @@ def download_file_route(filetype, filename):
 @app.route('/image/<filename>')
 def serve_image_route(filename):
     """Отдает изображение."""
+    # TODO: Исправить проблему с отображением изображений в результатах OCR
+    # FIXME: Изображения не отображаются в демо-режиме - нужно проверить пути и создание файлов
+    # Проблема: В демо-режиме изображения создаются с неправильными путями или не создаются вообще
+    # Решение: Нужно убедиться, что демо-изображения сохраняются в правильную папку с правильными именами
+    
     secure_fname = secure_filename(filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_fname)
 
     # Для демо-режима создаем placeholder изображение
     if not os.path.exists(filepath):
         logger.warning(f"Запрошенное изображение не найдено: {filepath}, создаем placeholder")
-        # Создаем простое SVG изображение как placeholder
+        # FIXME: Временное решение - создаем SVG placeholder вместо реальных изображений
+        # TODO: Исправить создание и сохранение демо-изображений в mock_ocr_processing()
         from flask import Response
         svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">
             <rect width="300" height="200" fill="#334155"/>
