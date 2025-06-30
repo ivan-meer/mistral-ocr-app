@@ -115,22 +115,27 @@ mistral-ocr-app/
 - Responsive design with mobile-first approach
 - Progressive enhancement with JavaScript
 
-## Recent Fixes (v2.0.3)
+## Recent Fixes (v2.0.6)
 
-### Critical Real API Image Issue Resolution
-**Problem**: Images from real Mistral OCR API not displaying (logs showed 0 images)
-**Root Causes**: 
-1. Mistral OCR API returns `0` images in `page.images` but embeds links in markdown
-2. Frontend requests `/img-0.jpeg` instead of processed paths
-3. Missing markdown parser for extracting image references
-
-**Solution v2.0.3**: Dual-level image processing system
+### Correct Markdown Image Link Processing
+**Issue**: Images detected by API but not properly linked in markdown output
+**Solution**: Proper markdown link replacement according to Mistral OCR documentation
 
 **Key Changes**:
-- `app.py:46-69` - Added `extract_images_from_markdown()` function with regex parsing
-- `app.py:185-191` - Enhanced API response logging to debug structure
-- `app.py:222-284` - Implemented dual processing: base64 from API + markdown links
-- `app.py:501-521` - Added `serve_markdown_image()` route for direct markdown requests
-- Added regex pattern: `r'!\[([^\]]*)\]\(([^)]+\.(jpeg|jpg|png|gif|webp))\)'`
-- SVG placeholder generation with contextual information
-- Full compatibility with real Mistral OCR API behavior
+- `app.py:297-327` - Correct markdown link processing with ID matching
+- Enhanced image linking between API data and markdown references
+- Automatic URL replacement for images with saved files
+- Fallback to placeholder routes for images without base64 data
+- Detailed logging of link replacement process
+
+### Understanding Mistral OCR Image Workflow
+1. **API Detection**: Correctly finds images with coordinates
+2. **Markdown Links**: Embeds references like `![alt](img-0.jpeg)` in markdown
+3. **Base64 Data**: May be empty (`length=0`) for some documents
+4. **Our Solution**: Links API metadata with markdown references and provides placeholders
+
+### Previous Major Fixes
+- **v2.0.5**: Professional SVG placeholders with visual design
+- **v2.0.4**: NoneType error resolution with null-safe processing
+- **v2.0.3**: Real API image support with markdown parsing
+- **v2.0.2**: Complete image processing pipeline overhaul

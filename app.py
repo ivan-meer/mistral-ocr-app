@@ -208,13 +208,24 @@ def mistral_ocr_processing(file_path, include_images=True):
             document={"type": "document_url", "document_url": signed_url.url},
             include_image_base64=include_images
         )
-        # FIXED: Добавляем детальное логирование ответа API
+        # FIXED: Добавляем детальное логирование ответа API с защитой от None
         logger.info(f"Получен ответ от Mistral OCR API. Страниц: {len(ocr_response.pages)}")
         for i, page in enumerate(ocr_response.pages):
             logger.info(f"Страница {i}: изображений в API ответе: {len(page.images) if page.images else 0}")
             if page.images:
                 for j, img in enumerate(page.images):
-                    logger.info(f"  Изображение {j}: ID={img.id}, base64_length={len(img.image_base64) if hasattr(img, 'image_base64') else 'нет'}")
+                    img_id = getattr(img, 'id', 'unknown')
+                    # Детальное логирование структуры изображения
+                    img_attrs = []
+                    for attr in ['id', 'image_base64', 'top_left_x', 'top_left_y', 'bottom_right_x', 'bottom_right_y']:
+                        if hasattr(img, attr):
+                            value = getattr(img, attr)
+                            if attr == 'image_base64':
+                                value_str = f"length={len(value) if value else 0}"
+                            else:
+                                value_str = str(value)
+                            img_attrs.append(f"{attr}={value_str}")
+                    logger.info(f"  Изображение {j}: {', '.join(img_attrs)}")
     except Exception as e:
         logger.error(f"Ошибка OCR обработки в Mistral API: {e}")
         raise ValueError(f"Ошибка взаимодействия с Mistral API при OCR обработке: {e}")
@@ -228,58 +239,92 @@ def mistral_ocr_processing(file_path, include_images=True):
             logger.info(f"Обрабатываем {len(page.images)} изображений из API base64")
             for img in page.images:
                 try:
-                    # Правильная обработка base64 изображений из Mistral API
-                    base64_data = img.image_base64
+                    # FIXED: Правильная обработка base64 изображений с защитой от None
+                    base64_data = getattr(img, 'image_base64', None)
+                    img_id = getattr(img, 'id', f'img_{len(page_data["images"])}')
+                    
+                    if not base64_data:
+                        logger.warning(f"Изображение {img_id} не содержит base64 данных, используем координаты")
+                        # Создаем изображение с координатами вместо base64
+                        coordinates = {
+                            'top_left_x': getattr(img, 'top_left_x', 0),
+                            'top_left_y': getattr(img, 'top_left_y', 0),
+                            'bottom_right_x': getattr(img, 'bottom_right_x', 0),
+                            'bottom_right_y': getattr(img, 'bottom_right_y', 0)
+                        }
+                        width = coordinates['bottom_right_x'] - coordinates['top_left_x']
+                        height = coordinates['bottom_right_y'] - coordinates['top_left_y']
+                        
+                        page_data["images"].append({
+                            "id": img_id,
+                            "path": None,
+                            "image_base64": None,
+                            "coordinates": coordinates,
+                            "width": width,
+                            "height": height,
+                            "alt_text": f"Изображение {img_id}"
+                        })
+                        logger.info(f"Добавлено изображение с координатами: {img_id} ({width}x{height})")
+                        continue
+                    
                     if base64_data.startswith('data:image'):
                         # Если есть MIME префикс, извлекаем только base64 часть
                         base64_data = base64_data.split(',')[1]
                     
                     img_data = base64.b64decode(base64_data)
-                    img_filename = f"page_{page.index}_img_{img.id}.png"
+                    img_id = getattr(img, 'id', f'img_{len(page_data["images"])}')
+                    img_filename = f"page_{page.index}_img_{img_id}.png"
                     img_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(img_filename))
                     with open(img_path, "wb") as img_file:
                         img_file.write(img_data)
                     
                     page_data["images"].append({
-                        "id": img.id, 
+                        "id": img_id, 
                         "path": img_path,
-                        "image_base64": img.image_base64
+                        "image_base64": getattr(img, 'image_base64', None)
                     })
                     logger.info(f"Сохранено base64 изображение: {img_filename}")
                 except Exception as e:
-                    logger.error(f"Ошибка сохранения base64 изображения {img.id}: {e}")
+                    img_id = getattr(img, 'id', 'unknown')
+                    logger.error(f"Ошибка сохранения base64 изображения {img_id}: {e}")
+                    # Добавляем изображение в список даже если не удалось сохранить файл
+                    page_data["images"].append({
+                        "id": img_id,
+                        "path": None,
+                        "image_base64": getattr(img, 'image_base64', None)
+                    })
         
-        # FIXED: Дополнительно извлекаем изображения из markdown ссылок
+        # FIXED: Обрабатываем ссылки на изображения в markdown согласно документации Mistral
         if include_images:
             markdown_images = extract_images_from_markdown(page.markdown, page.index)
             logger.info(f"Найдено {len(markdown_images)} изображений в markdown")
             
+            # Обновляем markdown, заменяя ссылки на изображения на корректные URL
+            updated_markdown = page.markdown
             for md_img in markdown_images:
-                # Создаем placeholder изображение для ссылок из markdown
-                placeholder_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(md_img['filename']))
+                # Ищем соответствующее изображение из API данных по ID
+                api_image = None
+                for img_data in page_data["images"]:
+                    if img_data.get("id") == md_img['id']:
+                        api_image = img_data
+                        break
                 
-                # Создаем простое placeholder изображение
-                try:
-                    placeholder_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-                        <rect width="400" height="300" fill="#e2e8f0"/>
-                        <text x="200" y="140" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="16">{md_img['alt_text'] or 'Изображение'}</text>
-                        <text x="200" y="160" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{md_img['original_ref']}</text>
-                    </svg>'''
-                    
-                    # Конвертируем SVG в base64 PNG (упрощенно создаем base64 SVG)
-                    svg_base64 = base64.b64encode(placeholder_svg.encode('utf-8')).decode('utf-8')
-                    placeholder_base64 = f"data:image/svg+xml;base64,{svg_base64}"
-                    
-                    page_data["images"].append({
-                        "id": md_img['id'],
-                        "path": placeholder_path,
-                        "image_base64": placeholder_base64,
-                        "alt_text": md_img['alt_text'],
-                        "original_ref": md_img['original_ref']
-                    })
-                    logger.info(f"Создан placeholder для markdown изображения: {md_img['original_ref']}")
-                except Exception as e:
-                    logger.error(f"Ошибка создания placeholder для {md_img['original_ref']}: {e}")
+                if api_image and api_image.get("path"):
+                    # Если есть сохраненный файл, используем его URL
+                    img_filename = secure_filename(os.path.basename(api_image['path']))
+                    new_url = f"/image/{img_filename}"
+                    logger.info(f"Заменяем {md_img['original_ref']} на {new_url}")
+                    updated_markdown = updated_markdown.replace(
+                        md_img['markdown_pattern'],
+                        f"![{md_img['alt_text']}]({new_url})"
+                    )
+                else:
+                    # Если нет файла, используем наш роут для placeholder
+                    logger.info(f"Используем placeholder роут для {md_img['original_ref']}")
+                    # Markdown уже содержит правильную ссылку, наш роут обработает её
+            
+            # Обновляем markdown в данных страницы
+            page_data["markdown"] = updated_markdown
         
         processed_pages.append(page_data)
 
@@ -500,7 +545,7 @@ def serve_image_route(filename):
 
 @app.route('/<path:image_path>')
 def serve_markdown_image(image_path):
-    """FIXED: Обрабатывает прямые запросы к изображениям из markdown (например /img-0.jpeg)."""
+    """FIXED: Обрабатывает прямые запросы к изображениям из markdown с улучшенными placeholder."""
     # Проверяем, что это запрос к изображению
     if not any(image_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
         # Если не изображение, возвращаем 404
@@ -509,13 +554,45 @@ def serve_markdown_image(image_path):
     
     logger.info(f"Запрос к markdown изображению: {image_path}")
     
-    # Создаем placeholder SVG для изображений из markdown
+    # Создаем улучшенный placeholder SVG для изображений из markdown
     from flask import Response
-    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-        <rect width="400" height="300" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
-        <text x="200" y="140" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="16">Изображение из документа</text>
-        <text x="200" y="160" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="12">{image_path}</text>
-        <text x="200" y="180" text-anchor="middle" fill="#94a3b8" font-family="Arial" font-size="10">Извлечено из PDF Mistral OCR</text>
+    
+    # Определяем размеры на основе типичных пропорций документа
+    # TODO: В будущем можно получать реальные размеры из координат
+    width = 600
+    height = 400
+    
+    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+        <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" stroke-width="1"/>
+            </pattern>
+        </defs>
+        
+        <rect width="{width}" height="{height}" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+        <rect width="{width}" height="{height}" fill="url(#grid)" opacity="0.3"/>
+        
+        <!-- Иконка изображения -->
+        <rect x="{width//2-30}" y="{height//2-50}" width="60" height="40" fill="#cbd5e1" rx="4"/>
+        <circle cx="{width//2-15}" cy="{height//2-35}" r="6" fill="#94a3b8"/>
+        <polygon points="{width//2-25},{height//2-20} {width//2-5},{height//2-30} {width//2+15},{height//2-15} {width//2+25},{height//2-15}" fill="#94a3b8"/>
+        
+        <!-- Текст -->
+        <text x="{width//2}" y="{height//2+20}" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="18" font-weight="bold">
+            Изображение из PDF
+        </text>
+        <text x="{width//2}" y="{height//2+45}" text-anchor="middle" fill="#64748b" font-family="Arial, sans-serif" font-size="14">
+            {image_path}
+        </text>
+        <text x="{width//2}" y="{height//2+65}" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="12">
+            Обнаружено Mistral OCR API
+        </text>
+        <text x="{width//2}" y="{height//2+85}" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10">
+            Base64 данные недоступны
+        </text>
+        
+        <!-- Декоративные элементы -->
+        <rect x="20" y="20" width="{width-40}" height="{height-40}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="5,5" opacity="0.5"/>
     </svg>'''
     
     return Response(svg_content, mimetype='image/svg+xml')
