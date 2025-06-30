@@ -544,7 +544,7 @@
                                 imagesContainer.appendChild(imagesTitle);
                                 
                                 page.images.forEach((img, imgIndex) => {
-                                    console.info(`Обрабатываем изображение ${imgIndex + 1} на странице ${page.index + 1}:`, img);
+                                    console.log(`[CLIENT_IMG_PROCESSING] Страница ${page.index + 1}, Изображение ${imgIndex + 1}:`, JSON.parse(JSON.stringify(img)));
                                     
                                     const imgWrapper = document.createElement('div');
                                     imgWrapper.classList.add('image-wrapper', 'mb-3');
@@ -554,46 +554,52 @@
                                     imgElem.alt = `Изображение ${imgIndex + 1} со страницы ${page.index + 1}`;
                                     imgElem.loading = 'lazy';
                                     
-                                    // FIXED: Правильная логика загрузки изображений
-                                    let imageLoaded = false;
-                                    
+                                    let imageSource = '';
+                                    let sourceOrigin = '';
+
                                     // Попытка 1: Использовать server endpoint если есть URL
                                     if (img.url) {
-                                        imgElem.src = img.url;
-                                        imageLoaded = true;
+                                        imageSource = img.url;
+                                        sourceOrigin = 'img.url';
                                     } 
                                     // Попытка 2: Использовать путь к файлу через server endpoint
                                     else if (img.path) {
                                         const imageName = img.path.split(/[\\/]/).pop();
-                                        imgElem.src = `/image/${imageName}`;
-                                        imageLoaded = true;
+                                        imageSource = `/image/${imageName}`;
+                                        sourceOrigin = 'img.path (transformed)';
                                     }
                                     // Попытка 3: Использовать base64 данные напрямую
                                     else if (img.image_base64) {
-                                        imgElem.src = img.image_base64;
-                                        imageLoaded = true;
+                                        imageSource = img.image_base64;
+                                        sourceOrigin = 'img.image_base64';
                                     }
                                     
                                     // Fallback: показать placeholder
-                                    if (!imageLoaded) {
-                                        imgElem.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#e2e8f0"/><text x="150" y="100" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="14">Изображение недоступно</text></svg>')}`;
+                                    if (!imageSource) {
+                                        imageSource = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#e2e8f0"/><text x="150" y="100" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="14">Изображение недоступно</text></svg>')}`;
+                                        sourceOrigin = 'fallback placeholder';
                                     }
                                     
+                                    console.log(`[CLIENT_IMG_PROCESSING] Для изображения ${img.id || imgIndex}: выбран источник '${sourceOrigin}', src будет установлен в '${imageSource.substring(0,100)}${imageSource.length > 100 ? '...' : ''}'`);
+                                    imgElem.src = imageSource;
+
                                     // Добавляем обработчик ошибок загрузки изображения
                                     imgElem.onerror = function() {
-                                        console.warn(`Ошибка загрузки изображения: ${this.src}`);
-                                        // Если основной источник не загрузился, пробуем base64
+                                        console.warn(`[CLIENT_IMG_ERROR] Ошибка загрузки изображения: ${this.src.substring(0,100)}${this.src.length > 100 ? '...' : ''}`);
+                                        // Если основной источник не загрузился, пробуем base64 (если еще не пробовали и он есть)
                                         if (img.image_base64 && !this.src.startsWith('data:image')) {
+                                            console.log(`[CLIENT_IMG_ERROR] Попытка fallback на img.image_base64 для ${img.id || imgIndex}`);
                                             this.src = img.image_base64;
                                         } else {
-                                            // Показываем placeholder
+                                            // Показываем placeholder ошибки
+                                            console.log(`[CLIENT_IMG_ERROR] Установка placeholder'а ошибки для ${img.id || imgIndex}`);
                                             this.src = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#f87171"/><text x="150" y="100" text-anchor="middle" fill="#ffffff" font-family="Arial" font-size="14">Ошибка загрузки</text></svg>')}`;
                                         }
                                     };
                                     
                                     // Добавляем обработчик успешной загрузки
                                     imgElem.onload = function() {
-                                        console.info(`Изображение загружено успешно: ${img.id}`);
+                                        console.info(`[CLIENT_IMG_LOADED] Изображение загружено успешно: ${img.id || imgIndex}, src: ${this.src.substring(0,100)}${this.src.length > 100 ? '...' : ''}`);
                                     };
                                     
                                     // Add click handler for image zoom
